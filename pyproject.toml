@@ -1,0 +1,16 @@
+[project]
+name = "window-bending"
+version = "0.1.0"
+description = "Nonlinear deformation analysis of pressurized circular windows."
+requires-python = ">=3.10"
+dependencies = ["numpy", "scipy", "matplotlib", "openpyxl"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "C4", "RUF"]
+
+[tool.pytest.ini_options]
+addopts = "-q"

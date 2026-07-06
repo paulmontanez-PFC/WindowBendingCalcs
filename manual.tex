@@ -1,0 +1,1014 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage[hidelinks]{hyperref}
+\usepackage{siunitx}
+% Preserve the manual's comma digit grouping (e.g. 101,000) for pressures.
+\sisetup{group-separator={,}, group-minimum-digits=4}
+
+% ---------------------------------------------------------------------------
+% Listings configuration for Python and shell snippets
+% ---------------------------------------------------------------------------
+\definecolor{codebg}{rgb}{0.97,0.97,0.97}
+\definecolor{codekw}{rgb}{0.0,0.2,0.7}
+\definecolor{codecomment}{rgb}{0.0,0.5,0.0}
+\definecolor{codestring}{rgb}{0.6,0.1,0.1}
+
+\lstdefinestyle{pystyle}{
+  language=Python,
+  backgroundcolor=\color{codebg},
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{codekw}\bfseries,
+  commentstyle=\color{codecomment}\itshape,
+  stringstyle=\color{codestring},
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  frame=single,
+  rulecolor=\color{gray!40},
+  breaklines=true,
+  showstringspaces=false,
+  tabsize=4,
+}
+
+\lstdefinestyle{shellstyle}{
+  backgroundcolor=\color{codebg},
+  basicstyle=\ttfamily\small,
+  frame=single,
+  rulecolor=\color{gray!40},
+  breaklines=true,
+  showstringspaces=false,
+}
+
+\newcommand{\code}[1]{\texttt{#1}}
+
+\title{\textbf{WindowBending}\\[4pt]
+\large Nonlinear Deformation Analysis of Pressurized Circular Windows\\[6pt]
+\normalsize User Manual}
+\author{}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+% ===========================================================================
+\section{Introduction}
+% ===========================================================================
+
+\textbf{WindowBending} is a Python tool that computes the structural response
+of a circular window (for example, an optical fused-silica window) subjected to
+a uniform pressure load on one face. It solves the axisymmetric, large-deflection
+F\"oppl--von K\'arm\'an plate equations and reports:
+
+\begin{itemize}[noitemsep]
+  \item the transverse deflection profile $w(r)$ and the centre deflection;
+  \item the radial and circumferential (hoop) stress distributions on both faces;
+  \item the peak tensile stress; and
+  \item the safety factor against a user-supplied allowable stress.
+\end{itemize}
+
+The tool supports two edge support models (\emph{clamped} and
+\emph{simply supported}) and an optional \emph{design sweep} that varies one
+parameter (thickness or pressure) over a range and tabulates the resulting
+deflection, stress, and safety factor.
+
+\paragraph{Motivating problem.} The default configuration models a
+\qty{450}{\milli\meter} diameter, \qty{25}{\milli\meter} thick fused-silica window,
+fixed around its outer edge, with a uniform pressure of
+\qty{101000}{\pascal} (1~atm) applied to the top face.
+
+% ===========================================================================
+\section{Theory}
+% ===========================================================================
+
+\subsection{Geometry and assumptions}
+
+The window is modelled as a thin, flat, circular plate of radius $a$ and uniform
+thickness $t$, made of a linear-elastic, isotropic material with Young's modulus
+$E$ and Poisson's ratio $\nu$. Because both the geometry and the loading are
+axisymmetric, all field quantities depend only on the radial coordinate
+$r \in [0, a]$. The transverse deflection is denoted $w(r)$ (positive in the
+direction of the applied pressure) and the in-plane radial displacement is
+$u(r)$.
+
+\subsection{Linear (small-deflection) plate theory}
+\label{sec:linear}
+
+For small deflections ($w \ll t$), Kirchhoff--Love plate theory gives a closed-form
+centre deflection for a uniformly loaded circular plate. The flexural rigidity is
+%
+\begin{equation}
+  D = \frac{E\,t^{3}}{12\,(1-\nu^{2})}.
+\end{equation}
+%
+For a \textbf{clamped} edge,
+%
+\begin{equation}
+  w_{0}^{\text{lin}} = \frac{p\,a^{4}}{64\,D},
+  \label{eq:clamped-linear}
+\end{equation}
+%
+and for a \textbf{simply supported} edge,
+%
+\begin{equation}
+  w_{0}^{\text{lin}} = \frac{p\,a^{4}\,(5+\nu)}{64\,D\,(1+\nu)}.
+  \label{eq:ss-linear}
+\end{equation}
+%
+These expressions are used both as a sanity baseline and to seed the nonlinear
+solver. They are exposed by \code{PlateConfig.linear\_center\_deflection()}.
+
+\subsection{Large-deflection F\"oppl--von K\'arm\'an equations}
+
+When the deflection becomes a non-negligible fraction of the thickness, the plate
+develops in-plane (membrane) stretching that stiffens the response. This coupling
+is captured by the axisymmetric F\"oppl--von K\'arm\'an equations. The membrane
+stiffness is
+%
+\begin{equation}
+  C = \frac{E\,t}{1-\nu^{2}},
+\end{equation}
+%
+and the radial and circumferential membrane stress resultants are
+%
+\begin{align}
+  N_{r} &= C\left( u' + \nu\,\frac{u}{r} + \tfrac{1}{2}\,(w')^{2} \right), \\
+  N_{\theta} &= C\left( \frac{u}{r} + \nu\,u' + \tfrac{1}{2}\,\nu\,(w')^{2} \right),
+\end{align}
+%
+where a prime denotes $\mathrm{d}/\mathrm{d}r$. The coupled governing equations are
+the transverse equilibrium equation,
+%
+\begin{equation}
+  D\,\nabla^{4} w = p + N_{r}\,w'' + N_{\theta}\,\frac{w'}{r},
+  \label{eq:transverse}
+\end{equation}
+%
+and the in-plane equilibrium equation,
+%
+\begin{equation}
+  \frac{\mathrm{d}}{\mathrm{d}r}\!\left( N_{r} \right) + \frac{N_{r}-N_{\theta}}{r} = 0,
+  \label{eq:inplane}
+\end{equation}
+%
+where the axisymmetric biharmonic operator acting on $w$ is
+%
+\begin{equation}
+  \nabla^{4} w
+  = w'''' + \frac{2}{r}\,w''' - \frac{1}{r^{2}}\,w'' + \frac{1}{r^{3}}\,w'.
+\end{equation}
+
+\subsection{Range of validity}
+\label{sec:validity}
+
+The Kirchhoff and F\"oppl--von K\'arm\'an models rest on two independent
+assumptions, each with its own dimensionless ratio:
+%
+\begin{itemize}
+  \item \textbf{Thin-plate (shear-free) assumption:} the thickness must be small
+    relative to the in-plane span, quantified by the thickness-to-diameter ratio
+    $t/D$ (equivalently the radius-to-thickness ratio $R/h = 1/(2\,t/D)$, with
+    $R=a$ the radius and $h=t$ the thickness). Kirchhoff--Love kinematics neglect
+    transverse shear and are accurate for genuinely thin plates,
+    $t/D < 0.05$ ($R/h > 10$). Beyond this the plate carries an appreciable shear
+    deflection that Kirchhoff theory omits: a \emph{transition zone}
+    $0.05 \le t/D < 0.1$ ($5 < R/h \le 10$) where the Mindlin--Reissner model is
+    recommended for accuracy, and a definite thick-plate region $t/D \ge 0.1$
+    ($R/h \le 5$) where it is required.
+  \item \textbf{Moderate-rotation assumption:} the F\"oppl--von K\'arm\'an strain
+    measure retains only the leading nonlinear term $\tfrac{1}{2}(w')^{2}$, which
+    is accurate while the central deflection is at most a few thicknesses
+    ($w_0/t \lesssim 1$--$5$) and edge rotations stay below about \qtyrange{10}{15}{\degree}.
+\end{itemize}
+%
+For the windows of interest the deflection stays far below the thickness
+($w_0/t \le 0.06$), so the moderate-rotation limit is comfortably satisfied and
+the response is effectively quasi-linear. The binding limitation is instead the
+thin-plate assumption: much of the design space---including the default
+\qty{450}{\milli\meter} diameter, \qty{25}{\milli\meter} thick window
+($t/D = 0.056$, $R/h = 9$)---falls in
+the transition zone or beyond ($t/D$ reaches $0.14$ at the thick, small-diameter
+corners). There the shear-free Kirchhoff model under-predicts the deflection,
+motivating the shear-deformable model of the next subsection.
+
+\subsection{Mindlin--Reissner (shear-deformable) theory}
+\label{sec:mindlin}
+
+When $t/D$ exceeds the thin-plate limit the tool can solve the axisymmetric
+\emph{Mindlin--Reissner} plate equations, which relax the Kirchhoff constraint by
+letting the cross-section rotation $\beta(r)$ be independent of the slope $w'$.
+The difference between them is the transverse-shear strain, resisted by the shear
+stiffness
+%
+\begin{equation}
+  k_{s} = \kappa\,G\,t, \qquad
+  G = \frac{E}{2(1+\nu)}, \qquad
+  \kappa = \tfrac{5}{6},
+\end{equation}
+%
+with $\kappa$ the shear-correction factor for a homogeneous rectangular section.
+The transverse shear resultant is $Q = k_{s}\,(w' + \beta)$, and the bending
+moments are expressed through $\beta$ rather than $w''$:
+%
+\begin{align}
+  M_{r} &= D\left( \beta' + \nu\,\frac{\beta}{r} \right), &
+  M_{\theta} &= D\left( \nu\,\beta' + \frac{\beta}{r} \right).
+\end{align}
+%
+Combined with the same membrane (von K\'arm\'an) coupling used above, this yields
+a shear-deformable BVP that reduces to the Kirchhoff solution as $t/D \to 0$
+(where $k_{s} \to \infty$ forces $\beta \to -w'$). For a clamped plate the linear
+limit gives the closed-form central deflection
+%
+\begin{equation}
+  w_{\mathrm{Mindlin}}(0) = \underbrace{\frac{p\,a^{4}}{64\,D}}_{\text{bending}}
+  + \underbrace{\frac{p\,a^{2}}{4\,\kappa\,G\,t}}_{\text{shear}},
+  \label{eq:mindlin-clamped}
+\end{equation}
+%
+i.e.\ the Kirchhoff deflection plus an additive shear term. The peak bending
+stress is essentially unchanged (transverse equilibrium fixes $Q=-pr/2$ in both
+theories); only the deflection grows, by the shear compliance in
+\eqref{eq:mindlin-clamped}. The theory is selected with the
+\code{-{}-plate-theory} flag (Section~\ref{sec:cli}); \code{auto} switches to
+Mindlin whenever $R/h \le 10$ (equivalently $t/D \ge 0.05$), so the transition
+zone and thicker plates use the shear-deformable model, and Kirchhoff is retained
+only for genuinely thin plates ($R/h > 10$).
+
+
+
+Three conditions follow from axisymmetry at the centre $r=0$:
+%
+\begin{equation}
+  w'(0) = 0, \qquad w'''(0) = 0, \qquad u(0) = 0.
+\end{equation}
+%
+At the supported edge $r=a$, the deflection vanishes and the edge is radially
+constrained:
+%
+\begin{equation}
+  w(a) = 0, \qquad u(a) = 0.
+\end{equation}
+%
+The remaining condition distinguishes the two support types:
+%
+\begin{itemize}
+  \item \textbf{Clamped:} zero edge rotation,
+  \begin{equation}
+    w'(a) = 0.
+  \end{equation}
+  \item \textbf{Simply supported:} zero radial bending moment,
+  \begin{equation}
+    M_{r}(a) = -D\left( w''(a) + \nu\,\frac{w'(a)}{a} \right) = 0.
+  \end{equation}
+\end{itemize}
+
+\subsection{Stress recovery}
+
+Once $w(r)$ and $u(r)$ are known, the bending moments per unit length are
+%
+\begin{align}
+  M_{r} &= -D\left( w'' + \nu\,\frac{w'}{r} \right), &
+  M_{\theta} &= -D\left( \frac{w'}{r} + \nu\,w'' \right).
+\end{align}
+%
+The total surface stress superposes a membrane part (uniform through thickness)
+and a bending part (linear through thickness, extreme at the faces):
+%
+\begin{align}
+  \sigma_{r}^{\text{membrane}} = \frac{N_{r}}{t}, &\qquad
+  \sigma_{\theta}^{\text{membrane}} = \frac{N_{\theta}}{t}, \\[4pt]
+  \sigma_{r}^{\text{bending}} = \frac{6 M_{r}}{t^{2}}, &\qquad
+  \sigma_{\theta}^{\text{bending}} = \frac{6 M_{\theta}}{t^{2}}.
+\end{align}
+%
+The stresses on the two faces are therefore
+%
+\begin{align}
+  \sigma^{\text{top}} &= -\sigma^{\text{bending}} + \sigma^{\text{membrane}}, \\
+  \sigma^{\text{bottom}} &= +\sigma^{\text{bending}} + \sigma^{\text{membrane}}.
+\end{align}
+
+\subsection{Peak stress and safety factor}
+
+The peak tensile stress is the maximum over the radial coordinate of all four
+stress components (radial/hoop on top/bottom faces):
+%
+\begin{equation}
+  \sigma_{\max} = \max_{r}\, \bigl\{\,
+    \sigma_{r}^{\text{top}},\ \sigma_{\theta}^{\text{top}},\
+    \sigma_{r}^{\text{bottom}},\ \sigma_{\theta}^{\text{bottom}}
+  \,\bigr\}.
+\end{equation}
+%
+The safety factor compares this against the user-supplied allowable stress
+$\sigma_{\text{allow}}$:
+%
+\begin{equation}
+  \text{SF} = \frac{\sigma_{\text{allow}}}{\sigma_{\max}}.
+\end{equation}
+%
+Because fused silica is brittle, the relevant allowable stress is its
+``allowable design stress'' (modulus of rupture / 10). The default allowable
+stress is \qty{4.69}{\mega\pascal} (\num{680} psi).
+
+% ===========================================================================
+\section{Numerical Implementation}
+% ===========================================================================
+
+\subsection{Reformulation for numerical conditioning}
+
+A direct first-order reduction of the fourth-order biharmonic operator carries
+$1/r^{2}$ and $1/r^{3}$ singular terms near the centre. In practice these make the
+collocation solver \code{scipy.integrate.solve\_bvp} ill-conditioned: it fails to
+converge and returns a deflection biased low by roughly $7\%$, even in the linear
+limit where the answer must match Eqs.~\eqref{eq:clamped-linear}
+and~\eqref{eq:ss-linear}.
+
+To avoid this, the transverse equation is rewritten using the Laplacian
+intermediate variable
+%
+\begin{equation}
+  M \equiv \nabla^{2} w = w'' + \frac{w'}{r}.
+\end{equation}
+%
+This leaves only mild $1/r$ singularities. The simply-supported moment condition
+becomes, using $w'' = M - w'/r$,
+%
+\begin{equation}
+  M(a) = (1-\nu)\,\frac{w'(a)}{a}.
+\end{equation}
+%
+With this reformulation the solver reproduces both closed-form linear solutions to
+ten significant digits.
+
+\subsection{First-order state-space system}
+
+The problem is cast as a first-order boundary-value problem in the state vector
+%
+\begin{equation}
+  \mathbf{y} = \bigl[\, w,\ w',\ M,\ M',\ u,\ u' \,\bigr]^{\mathsf{T}},
+\end{equation}
+%
+integrated over $r \in [r_{0}, a]$, where $r_{0} = a \times 10^{-6}$ is a small
+offset that regularizes the residual $1/r$ terms at the centre (constant
+\code{CENTER\_REGULARIZATION}). The six boundary residuals encode the three
+symmetry conditions at $r_0$ and the three edge conditions at $a$.
+
+\subsection{Solver settings}
+
+The nonlinear BVP is solved with \code{solve\_bvp}, seeded with the clamped
+small-deflection shape from Eq.~\eqref{eq:clamped-linear}. Key defaults are listed
+in Table~\ref{tab:solver}.
+
+\begin{table}[h]
+  \centering
+  \caption{Default solver configuration constants.}
+  \label{tab:solver}
+  \begin{tabular}{lll}
+    \toprule
+    Constant & Value & Meaning \\
+    \midrule
+    \code{DEFAULT\_MESH\_NODES}     & 250        & Initial mesh nodes \\
+    \code{DEFAULT\_OUTPUT\_POINTS}  & 400        & Output sample points \\
+    \code{SOLVER\_TOLERANCE}        & $10^{-7}$  & Collocation residual tolerance \\
+    \code{SOLVER\_MAX\_NODES}       & 50{,}000   & Maximum adaptive mesh nodes \\
+    \code{CENTER\_REGULARIZATION}   & $10^{-6}$  & Centre offset $r_{0}/a$ \\
+    \code{KIRCHHOFF\_CONTINUATION\_STEPS} & 10   & Load-continuation steps on failure \\
+    \code{LINEAR\_FALLBACK\_WT\_RATIO} & 0.2      & $w_0/t$ below which linear fallback is used \\
+    \code{VON\_KARMAN\_WT\_WARN\_RATIO} & 5       & $w_0/t$ above which validity is warned \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Thin-plate convergence and graceful fallback}
+\label{sec:robustness}
+
+As the plate is made thinner, the von K\'arm\'an central deflection grows toward
+the order of the thickness ($w_0/t \gtrsim 1$) and the response becomes
+membrane-dominated. A sharp bending \emph{boundary layer} then forms at the
+clamped edge, whose width shrinks with load. A uniform-mesh collocation solver
+refines that layer without bound and exhausts its node budget; empirically the
+single-shot solve succeeds for the fused-silica window down to about $t=\qty{6}{\milli\meter}$
+($w_0/t\approx0.5$) and fails below that. This is a strong-nonlinearity limit,
+not a small-deflection conditioning problem.
+
+The solver therefore uses a three-tier strategy:
+%
+\begin{enumerate}
+  \item \textbf{Single-shot solve.} The nonlinear BVP is attempted once from the
+    linear initial guess (the common, fast path).
+  \item \textbf{Load continuation.} On failure the pressure is ramped from a
+    small fraction to its full value in \code{KIRCHHOFF\_CONTINUATION\_STEPS}
+    steps, each converged solution seeding the next. This homotopy reaches
+    deeper into the nonlinear regime.
+  \item \textbf{Graceful fallback.} If continuation also fails, the response is
+    inspected: when $w_0/t \le \code{LINEAR\_FALLBACK\_WT\_RATIO}$ ($0.2$) the
+    membrane coupling is negligible, so the accurate closed-form linear
+    Kirchhoff solution (Section~\ref{sec:linear}) is returned with a warning.
+    Otherwise a descriptive \code{RuntimeError} is raised explaining that the
+    case is in the strongly nonlinear, membrane-dominated regime.
+\end{enumerate}
+%
+Independently, whenever a converged solution has $w_0/t >
+\code{VON\_KARMAN\_WT\_WARN\_RATIO}$ ($5$) the tool warns that the
+F\"oppl--von K\'arm\'an moderate-rotation assumption itself is violated
+(Section~\ref{sec:validity}) and a large-rotation shell model is required.
+Because such a result is quantitatively unreliable, this breach is surfaced
+prominently in \emph{every} output channel so it cannot be missed:
+%
+\begin{itemize}
+  \item a Python \code{UserWarning} is emitted;
+  \item the console prints a boxed \emph{MODEL VALIDITY WARNING} banner (before
+    and after a single case; sweeps additionally flag each offending row/cell
+    and list the affected cases);
+  \item the saved figures carry a bold red banner across the bottom
+    (\emph{MODEL INVALID: deflection exceeds F\"oppl--von K\'arm\'an validity});
+  \item the Excel workbooks gain a red-highlighted validity row, and sweep
+    workbooks additionally shade the offending value cells red.
+\end{itemize}
+
+% ===========================================================================
+\section{Software Architecture}
+% ===========================================================================
+
+The implementation lives in a single module, \code{window\_deformation.py}, and is
+organised around small, immutable data classes and pure functions so that the
+numerical core is independent of the command-line interface and plotting.
+
+\subsection{Data classes}
+
+\begin{description}[style=nextline]
+  \item[\code{Material}] Young's modulus, Poisson's ratio, allowable stress, and a
+    name. Validates that the modulus and allowable stress are positive and that
+    $-1 < \nu < 0.5$.
+  \item[\code{PlateConfig}] Geometry (diameter, thickness), pressure, material, and
+    boundary condition. Provides derived properties \code{radius\_m},
+    \code{flexural\_rigidity}, \code{membrane\_stiffness}, and
+    \code{linear\_center\_deflection()}. The convenience constructor
+    \code{from\_engineering\_units()} accepts millimetre geometry.
+  \item[\code{PlateSolution}] The computed fields: $r$, $w$, the linear and
+    nonlinear centre deflections, the four stress arrays, the peak stress, the
+    safety factor, and the boundary condition. Exposes \code{center\_deflection\_mm}
+    and \code{max\_tensile\_mpa} convenience properties.
+  \item[\code{SweepPoint}] One evaluated case of a design sweep: the swept value,
+    centre deflection (\unit{\milli\meter}), peak stress (\unit{\mega\pascal}), and safety factor.
+  \item[\code{GridPoint}] One evaluated case of a combined grid sweep: thickness
+    (\unit{\milli\meter}), diameter (\unit{\milli\meter}), thickness/diameter ratio,
+    resolved plate theory, linear and nonlinear centre deflection (\unit{\milli\meter}),
+    peak stress (\unit{\mega\pascal}), and safety factor.
+\end{description}
+
+\subsection{Key functions}
+
+\begin{description}[style=nextline]
+  \item[\code{solve\_plate(config, n\_mesh, n\_points)}] Solves the BVP for a single
+    \code{PlateConfig} and returns a \code{PlateSolution}.
+  \item[\code{run\_design\_sweep(base\_config, sweep\_variable, sweep\_values)}]
+    Evaluates the plate response across a range of thickness or pressure and
+    returns a list of \code{SweepPoint}.
+  \item[\code{run\_sweep\_grid(base\_config, thickness\_values\_mm, diameter\_values\_mm)}]
+    Evaluates the response over a full thickness $\times$ diameter grid (pressure,
+    material and edge fixed) and returns a list of \code{GridPoint}.
+  \item[\code{build\_parser()}, \code{config\_from\_args(args)}] Construct the CLI
+    parser and translate parsed arguments into a \code{PlateConfig}.
+  \item[\code{main(argv)}] Entry point: dispatches to single-case or sweep mode,
+    prints results, and optionally plots.
+\end{description}
+
+Plotting helpers import \code{matplotlib} lazily and force the non-interactive Agg
+backend, so the numerical core has no hard GUI dependency, remains fast to import
+for testing, and figures are written to disk rather than displayed. JPEG output
+additionally uses Pillow, which ships as a \code{matplotlib} dependency.
+
+% ===========================================================================
+\section{Installation}
+% ===========================================================================
+
+The tool requires Python 3.10+ and the packages \code{numpy}, \code{scipy},
+\code{matplotlib}, and \code{openpyxl} (for Excel export).
+
+\begin{lstlisting}[style=shellstyle]
+python -m pip install numpy scipy matplotlib openpyxl
+\end{lstlisting}
+
+% ===========================================================================
+\section{Command-Line Usage}
+\label{sec:cli}
+% ===========================================================================
+
+The script is run directly with Python. All parameters have defaults matching the
+fused-silica window described in the introduction.
+
+\begin{lstlisting}[style=shellstyle]
+python window_deformation.py [options]
+\end{lstlisting}
+
+\subsection{Options}
+
+\begin{table}[h]
+  \centering
+  \caption{Command-line options.}
+  \label{tab:cli}
+  \begin{tabular}{lll}
+    \toprule
+    Option & Default & Description \\
+    \midrule
+    \code{-{}-diameter-mm}         & 450     & Window diameter (\unit{\milli\meter}) \\
+    \code{-{}-thickness-mm}        & 25      & Window thickness (\unit{\milli\meter}) \\
+    \code{-{}-pressure-pa}         & 101000  & Uniform pressure (\unit{\pascal}) \\
+    \code{-{}-material}            & fused\_silica & Named material preset (see Table~\ref{tab:materials}) \\
+    \code{-{}-list-materials}      & off     & Print the preset table and exit \\
+    \code{-{}-youngs-modulus-pa}   & preset  & Override the preset Young's modulus (\unit{\pascal}) \\
+    \code{-{}-poisson-ratio}       & preset  & Override the preset Poisson's ratio \\
+    \code{-{}-allowable-stress-mpa}& preset  & Override the preset allowable stress (\unit{\mega\pascal}) \\
+    \code{-{}-boundary-condition}  & clamped & \code{clamped} or \code{simply\_supported} \\
+    \code{-{}-plate-theory}        & auto    & \code{kirchhoff}, \code{mindlin}, or \code{auto} (Mindlin when $R/h\le10$, i.e.\ $t/D\ge0.05$) \\
+    \code{-{}-sweep-variable}      & none    & \code{none}, \code{thickness\_mm}, \code{pressure\_pa}, \code{diameter\_mm}, or \code{all} \\
+    \code{-{}-sweep-start}         & ---     & Sweep start value \\
+    \code{-{}-sweep-stop}          & ---     & Sweep stop value \\
+    \code{-{}-sweep-count}         & 7       & Number of sweep samples \\
+    \code{-{}-output-dir}          & figures & Directory for saved figures and spreadsheets \\
+    \code{-{}-no-save}             & off     & Skip writing all output files (figures and spreadsheets) \\
+    \code{-{}-no-figures}          & off     & Skip only the JPEG figures (still write spreadsheets) \\
+    \code{-{}-no-excel}            & off     & Skip only the Excel spreadsheets (still write figures) \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Material presets}
+\label{sec:materials}
+
+The \code{-{}-material} flag selects a named material preset that sets Young's
+modulus $E$, Poisson's ratio $\nu$ and the allowable stress in one step. The
+built-in presets are listed in Table~\ref{tab:materials}. Run
+\code{-{}-list-materials} to print the same table from the command line and exit.
+
+\begin{table}[h]
+  \centering
+  \caption{Built-in material presets. Values are nominal room-temperature
+  properties; the allowable stress is the ``allowable design stress'' (modulus of
+  rupture / 10) taken from the reference glass and plastics property tables. Verify against
+  certified data before relying on them for design.}
+  \label{tab:materials}
+  \begin{tabular}{llS[table-format=3.1]S[table-format=1.3]S[table-format=3.2]}
+    \toprule
+    Key & Name & {$E$ (\unit{\giga\pascal})} & {$\nu$} & {Allowable (\unit{\mega\pascal})} \\
+    \midrule
+    \code{fused\_silica}    & Fused Silica            & 72.0  & 0.170 & 4.69   \\
+    \code{n\_bk7}           & N-BK7                   & 82.0  & 0.206 & 3.45   \\
+    \code{borofloat}        & Borofloat 33            & 64.0  & 0.200 & 25.00  \\
+    \code{aluminosilicate}  & Aluminosilicate (1723)  & 85.5  & 0.260 & 4.55   \\
+    \code{vycor}            & 96\% Silica (Vycor)     & 68.9  & 0.190 & 4.24   \\
+    \code{pyrex}            & Borosilicate (Pyrex)    & 62.7  & 0.200 & 4.21   \\
+    \code{plate\_glass}     & Plate Glass (Herculite) & 68.9  & 0.210 & 4.48   \\
+    \code{lead\_glass}      & High-Lead X-Ray Glass   & 55.2  & 0.230 & 3.45   \\
+    \code{acrylic}          & Methyl Methacrylate     & 2.5   & 0.390 & 6.34   \\
+    \code{sapphire}         & Sapphire                & 345.0 & 0.290 & 350.00 \\
+    \code{zerodur}          & Zerodur                 & 90.3  & 0.243 & 57.00  \\
+    \code{caf2}             & Calcium Fluoride        & 75.8  & 0.260 & 36.00  \\
+    \code{beryllium}        & Beryllium               & 287.0 & 0.032 & 240.00 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\noindent The individual \code{-{}-youngs-modulus-pa}, \code{-{}-poisson-ratio}
+and \code{-{}-allowable-stress-mpa} flags override the corresponding preset value,
+so a preset can be used as a starting point and then tuned. For example,
+\code{-{}-material sapphire -{}-allowable-stress-mpa 200} keeps sapphire's stiffness
+but applies a more conservative allowable stress. The selected material name is
+echoed in the console header, the figure subtitles and the spreadsheet parameter
+rows.
+
+\paragraph{How to use the preset library.} The presets are used in four steps:
+\begin{enumerate}[leftmargin=2em]
+  \item \textbf{Discover.} List the available presets and their properties without
+    running a solve:
+    \begin{lstlisting}[style=shellstyle]
+python window_deformation.py --list-materials
+    \end{lstlisting}
+  \item \textbf{Select.} Pass a preset key (the left column of
+    Table~\ref{tab:materials}) to \code{-{}-material}. All other inputs keep their
+    defaults unless you set them:
+    \begin{lstlisting}[style=shellstyle]
+python window_deformation.py --material beryllium --thickness-mm 15
+    \end{lstlisting}
+  \item \textbf{Tune (optional).} Override any single property while keeping the
+    rest of the preset. The override always wins over the preset value:
+    \begin{lstlisting}[style=shellstyle]
+python window_deformation.py --material n_bk7 --allowable-stress-mpa 25
+    \end{lstlisting}
+  \item \textbf{Combine.} A preset applies to every case of a design sweep, because
+    the sweep holds the material fixed while varying geometry or load:
+    \begin{lstlisting}[style=shellstyle]
+python window_deformation.py --material sapphire \
+    --sweep-variable thickness_mm --sweep-start 10 --sweep-stop 30 --sweep-count 5
+    \end{lstlisting}
+\end{enumerate}
+
+\noindent If \code{-{}-material} is omitted the tool uses \code{fused\_silica}, so
+existing commands behave exactly as before. Supplying an unknown key produces an
+\code{argparse} error that lists the valid choices.
+
+\paragraph{Presets from the Python API.} The same presets are available
+programmatically through the \code{wd.MATERIAL\_PRESETS} dictionary, keyed by the
+identical names accepted by \code{-{}-material}:
+\begin{lstlisting}[style=pystyle]
+import window_deformation as wd
+
+sapphire = wd.MATERIAL_PRESETS["sapphire"]         # a ready-made Material
+config = wd.PlateConfig.from_engineering_units(
+    diameter_mm=450.0, thickness_mm=25.0, pressure_pa=101_000.0,
+    material=sapphire,
+)
+solution = wd.solve_plate(config)
+print(solution.center_deflection_mm, solution.max_tensile_mpa)
+\end{lstlisting}
+
+\noindent Because \code{Material} is an immutable (frozen) dataclass, tune a preset
+by constructing a copy with \code{dataclasses.replace} rather than mutating it:
+\begin{lstlisting}[style=pystyle]
+from dataclasses import replace
+
+conservative = replace(wd.MATERIAL_PRESETS["beryllium"],
+                       allowable_stress_pa=200 * wd.PA_PER_MPA)
+\end{lstlisting}
+
+\paragraph{Figure output.} The tool never opens an interactive window. Instead it
+renders results with the non-interactive Agg backend and writes JPEG image files
+into the output directory (\code{figures/} by default), reporting each saved path
+on the console. A single case produces \code{single\_case\_deflection\_clamped.jpg}
+and \code{single\_case\_stress\_clamped.jpg}; a single-parameter sweep produces
+\code{sweep\_\textit{variable}\_clamped.jpg}; the combined sweep produces
+\code{sweep\_combined\_clamped.jpg} (the trailing boundary-condition name is
+appended automatically---see \emph{Output file naming} below). Pass
+\code{-{}-no-figures} to skip the figures (while
+still writing spreadsheets), or \code{-{}-no-save} to skip all output files.
+
+\paragraph{Spreadsheet output.} Alongside every figure the tool writes an Excel
+workbook (\code{.xlsx}) containing the same numeric results echoed to the console,
+into the same output directory. A single case produces
+\code{single\_case\_clamped.xlsx}
+(a labelled quantity/value/units table); a single-parameter sweep produces
+\code{sweep\_\textit{variable}\_clamped.xlsx} (one row per swept value); and the combined
+sweep produces \code{sweep\_combined\_clamped.xlsx} with four worksheets. The first,
+\emph{Case Details}, lists every grid case with the same per-case quantities
+reported for a single case---thickness, diameter, thickness/diameter ratio,
+resolved plate theory, linear and nonlinear centre deflection, peak tensile stress
+and safety factor (one row per thickness/diameter combination). The remaining three
+worksheets---center deflection, peak tensile stress and safety factor---each present
+that response as a thickness $\times$ diameter matrix. Every combined-sweep
+worksheet is prefixed with a \emph{parameters held constant} block listing the
+pressure, boundary condition, plate theory, Young's modulus, Poisson's ratio and
+allowable stress used for the grid.
+Spreadsheet cells hold full-precision values displayed to five
+decimals. Every workbook also carries a \emph{Note} row stating the
+plate-theory selection rule---under \code{auto}, based on the radius-to-thickness
+ratio $R/h = 1/(2\,t/D)$, Kirchhoff thin-plate theory is used for
+$t/D < \num{0.05}$ ($R/h > 10$) and Mindlin--Reissner thick-plate theory for
+$t/D \ge \num{0.05}$ ($R/h \le 10$, spanning the transition zone
+$\num{0.05}\le t/D<\num{0.1}$ and the definite thick-plate region $t/D\ge\num{0.1}$),
+while an explicit \code{-{}-plate-theory} choice overrides it.
+Pass \code{-{}-no-excel} to skip the spreadsheets (while still writing
+figures), or \code{-{}-no-save} to skip all output files. Excel export uses
+\code{openpyxl}.
+
+\paragraph{Output file naming.} Every figure and spreadsheet name always ends
+with the boundary condition (\code{\textit{name}\_clamped},
+\code{\textit{name}\_simply\_supported}) so results are self-identifying and
+runs with different edge conditions never collide. The tool also never
+overwrites an existing output file: if the boundary-condition name is already
+taken, a numeric suffix is added (\code{\textit{name}\_clamped\_1},
+\code{\textit{name}\_clamped\_2}, \ldots) to guarantee uniqueness. The
+console always reports the exact path written.
+
+\paragraph{Diameter sweep defaults.} When \code{-{}-sweep-variable diameter\_mm} is
+selected without explicit \code{-{}-sweep-start}/\code{-{}-sweep-stop}, the sweep
+defaults to diameters \qtyrange{250}{450}{\milli\meter} in $5$ steps (radius \qtyrange{125}{225}{\milli\meter} in
+\qty{25}{\milli\meter} increments).
+
+\paragraph{Combined sweep.} Selecting \code{-{}-sweep-variable all} evaluates a
+full thickness $\times$ diameter grid at the fixed base pressure and presents it
+in a single figure (\code{sweep\_combined\_clamped.jpg}) as \emph{families} of curves. The
+figure is a $2\times 3$ grid of panels: the top row plots each response versus
+thickness with one curve per diameter, and the bottom row plots each response
+versus diameter with one curve per thickness. The three columns are center
+deflection, peak tensile stress and safety factor. The thickness axis defaults to
+\qtyrange{15}{35}{\milli\meter} in $5$ steps and the diameter axis to \qtyrange{250}{450}{\milli\meter} in $5$ steps
+($25$ solved cases). The pressure sweep is intentionally excluded so that the
+whole grid shares one loading condition. Explicit
+\code{-{}-sweep-start}/\code{-{}-sweep-stop}/\code{-{}-sweep-count} values are
+ignored in this mode. The console prints three matrices (deflection, stress and
+safety factor) with thickness as rows and diameter as columns.
+
+\paragraph{Held-constant annotations.} Every figure states which parameters are
+held fixed. The single-case deflection and stress figures carry a subtitle listing
+the full input set (e.g.\ \emph{Diameter = 450.0 mm, Thickness = 25.0 mm,
+Pressure = 101,000 Pa, Edge = clamped}), and the console output additionally names
+the resolved plate theory and the $t/D$ ratio. A single-parameter sweep carries a
+figure title listing all fixed quantities (e.g.\ \emph{Held constant:
+Diameter = 450.0 mm, Pressure = 101,000 Pa, Edge = clamped, Theory = Kirchhoff}).
+The combined figure places the globally common constants (pressure, edge support
+and plate theory) in the figure title; each panel's legend identifies the curve
+family (diameter for the thickness panels, thickness for the diameter panels).
+
+% ===========================================================================
+\section{Examples}
+% ===========================================================================
+
+\subsection{Default single case}
+
+\begin{lstlisting}[style=shellstyle]
+python window_deformation.py
+\end{lstlisting}
+
+\noindent Produces the console summary below and writes
+\code{figures/single\_case\_deflection\_clamped.jpg} and
+\code{figures/single\_case\_stress\_clamped.jpg}:
+
+\begin{lstlisting}[style=shellstyle]
+=== Fused Silica Window Deformation (von Karman Nonlinear Plate BVP) ===
+Diameter: 450.000 mm, Thickness: 25.000 mm, Pressure: 101000.000 Pa
+Boundary condition: clamped
+
+Linear center deflection:    0.0419 mm
+Nonlinear center deflection: 0.0419 mm
+Peak tensile stress:         6.137 MPa
+Safety factor (allowable/peak): 0.764
+Saved figure: figures\single_case_deflection.jpg
+Saved figure: figures\single_case_stress.jpg
+\end{lstlisting}
+
+For this geometry $w/t \approx 0.0017$, so the membrane stiffening is negligible
+and the nonlinear result coincides with linear theory --- as it physically should.
+
+\subsection{Simply supported edge}
+
+\begin{lstlisting}[style=shellstyle]
+python window_deformation.py --boundary-condition simply_supported
+\end{lstlisting}
+
+A simply supported edge permits rotation and therefore deflects substantially more
+than a clamped edge ($\approx$~\qty{0.187}{\milli\meter} centre deflection for the default
+geometry).
+
+\subsection{Shear-deformable (Mindlin) thick plate}
+\label{sec:mindlin-example}
+
+\begin{lstlisting}[style=shellstyle]
+python window_deformation.py --diameter-mm 250 --thickness-mm 35 \
+    --plate-theory mindlin
+\end{lstlisting}
+
+For a \qty{35}{\milli\meter} plate on a \qty{250}{\milli\meter} aperture the thickness-to-diameter ratio is
+$t/D = 0.14$, beyond the thin-plate limit. The Mindlin--Reissner solution adds the
+transverse-shear compliance of \eqref{eq:mindlin-clamped} and therefore reports a
+larger centre deflection than the Kirchhoff model, while the peak stress is
+essentially unchanged. With the default \code{-{}-plate-theory auto} the same case
+selects Mindlin automatically because $t/D = 0.14 \ge 0.05$ ($R/h < 10$); passing
+\code{kirchhoff} forces the thin-plate model for comparison.
+
+\subsection{Selecting a material preset}
+\label{sec:material-example}
+
+\begin{lstlisting}[style=shellstyle]
+python window_deformation.py --material sapphire
+\end{lstlisting}
+
+\noindent Solves the default geometry with the sapphire preset
+(Table~\ref{tab:materials}); the console header echoes the material name
+(\emph{Sapphire Window Deformation}). The preset values can be tuned on the same
+command line---for example, applying a more conservative allowable stress while
+keeping sapphire's stiffness:
+
+\begin{lstlisting}[style=shellstyle]
+python window_deformation.py --material sapphire --allowable-stress-mpa 200
+\end{lstlisting}
+
+\noindent To see every available preset without running a solve:
+
+\begin{lstlisting}[style=shellstyle]
+python window_deformation.py --list-materials
+\end{lstlisting}
+
+\subsection{Thickness design sweep}
+
+\begin{lstlisting}[style=shellstyle]
+python window_deformation.py --sweep-variable thickness_mm \
+    --sweep-start 15 --sweep-stop 35 --sweep-count 5
+\end{lstlisting}
+
+\noindent Produces an aligned table (and writes \code{figures/sweep\_thickness\_mm\_clamped.jpg}):
+
+\begin{lstlisting}[style=shellstyle]
+=== Design Sweep Summary ===
+Sweep variable: Thickness (mm)
+
+     Value    Deflection(mm)   PeakStress(MPa)    SafetyFactor
+--------------------------------------------------------------
+    15.000           0.19394          17.06445          0.2747
+    20.000           0.08183           9.59089          0.4888
+    25.000           0.04389           6.13685          0.7640
+    30.000           0.02591           4.26132          1.1002
+    35.000           0.01669           3.13064          1.4976
+\end{lstlisting}
+
+\subsection{Diameter design sweep}
+
+With no explicit bounds, the diameter sweep defaults to \qtyrange{250}{450}{\milli\meter} in $5$
+steps (radius \qtyrange{125}{225}{\milli\meter}):
+
+\begin{lstlisting}[style=shellstyle]
+python window_deformation.py --sweep-variable diameter_mm
+\end{lstlisting}
+
+\noindent Produces (and writes \code{figures/sweep\_diameter\_mm\_clamped.jpg}):
+
+\begin{lstlisting}[style=shellstyle]
+=== Design Sweep Summary ===
+Sweep variable: Diameter (mm)
+
+     Value    Deflection(mm)   PeakStress(MPa)    SafetyFactor
+--------------------------------------------------------------
+   250.000           0.00461           1.89379          2.4757
+   300.000           0.00916           2.72711          1.7192
+   350.000           0.01654           3.71201          1.2630
+   400.000           0.02773           4.84855          0.9670
+   450.000           0.04389           6.13685          0.7640
+\end{lstlisting}
+
+\subsection{Pressure design sweep}
+
+\begin{lstlisting}[style=shellstyle]
+python window_deformation.py --sweep-variable pressure_pa \
+    --sweep-start 50000 --sweep-stop 200000 --sweep-count 6
+\end{lstlisting}
+
+\subsection{Combined thickness and diameter sweep}
+
+To study both geometry parameters at once under the fixed base pressure, select
+\code{all}. Three response matrices are printed (deflection, peak stress and
+safety factor) and a single combined figure of curve families
+(\code{figures/sweep\_combined\_clamped.jpg}) is written:
+
+\begin{lstlisting}[style=shellstyle]
+python window_deformation.py --sweep-variable all
+\end{lstlisting}
+
+\noindent Console output (abbreviated):
+
+\begin{lstlisting}[style=shellstyle]
+=== Combined Sweep: Center Deflection (mm) ===
+Rows: Thickness (mm)  |  Columns: Diameter (mm)
+   Thk\Dia         250.0         300.0         350.0         400.0         450.0
+--------------------------------------------------------------------------------
+      15.0       0.01950       0.03979       0.07098       0.12108       0.19394
+      ...
+      35.0       0.00189       0.00365       0.00645       0.01066       0.01669
+
+=== Combined Sweep: Peak Tensile Stress (MPa) ===
+   ... (thickness x diameter matrix) ...
+
+=== Combined Sweep: Safety Factor ===
+   ... (thickness x diameter matrix) ...
+\end{lstlisting}
+
+\subsection{Programmatic use}
+
+The module can be imported and used directly, which is convenient for scripting or
+notebooks:
+
+\begin{lstlisting}[style=pystyle]
+import window_deformation as wd
+
+config = wd.PlateConfig.from_engineering_units(
+    diameter_mm=450.0,
+    thickness_mm=25.0,
+    pressure_pa=101_000.0,
+    boundary_condition=wd.CLAMPED,
+)
+solution = wd.solve_plate(config, n_points=500)
+
+print(solution.center_deflection_mm)  # mm
+print(solution.max_tensile_mpa)       # MPa
+print(solution.safety_factor)
+\end{lstlisting}
+
+\subsection{Custom material}
+
+\begin{lstlisting}[style=pystyle]
+import window_deformation as wd
+
+bk7 = wd.Material(
+    youngs_modulus_pa=82e9,
+    poisson_ratio=0.21,
+    allowable_stress_pa=40e6,
+    name="N-BK7",
+)
+config = wd.PlateConfig.from_engineering_units(
+    diameter_mm=300.0, thickness_mm=20.0, pressure_pa=101_000.0, material=bk7,
+)
+solution = wd.solve_plate(config)
+\end{lstlisting}
+
+\noindent The named presets exposed on the command line are also available
+programmatically through the \code{wd.MATERIAL\_PRESETS} dictionary (keyed by the
+same names as \code{-{}-material}), so \code{wd.MATERIAL\_PRESETS["sapphire"]}
+returns a ready-made \code{Material}.
+
+% ===========================================================================
+\section{Output Quantities}
+% ===========================================================================
+
+\begin{description}[style=nextline]
+  \item[Linear center deflection] $w_{0}^{\text{lin}}$ from
+    Eq.~\eqref{eq:clamped-linear} or~\eqref{eq:ss-linear}; a quick sanity baseline.
+  \item[Nonlinear center deflection] $w(0)$ from the full von K\'arm\'an solve.
+  \item[Peak tensile stress] $\sigma_{\max}$, the governing quantity for brittle
+    fracture.
+  \item[Safety factor] $\sigma_{\text{allow}} / \sigma_{\max}$.
+\end{description}
+
+The tool always writes its figures as JPEG files (no interactive window). A single
+case produces a deflection profile and a stress profile (radial and hoop on both
+faces); a sweep produces a two-panel figure of deflection versus the swept
+variable and peak-stress/safety-factor versus the swept variable. Files are named
+descriptively and written to the output directory (\code{figures/} by default).
+
+% ===========================================================================
+\section{Validation and Testing}
+% ===========================================================================
+
+The package ships with a \code{pytest} suite (\code{test\_window\_deformation.py})
+of 37 tests covering:
+
+\begin{itemize}[noitemsep]
+  \item input validation and edge cases (non-positive dimensions, out-of-range
+    Poisson ratio, invalid boundary condition, degenerate mesh sizes);
+  \item physical correctness (zero edge deflection, centre is the maximum,
+    monotonic profile, clamped versus simply-supported ordering, thickness and
+    pressure trends);
+  \item agreement of the nonlinear solver with linear theory in the thin-deflection
+    limit and against the closed-form expressions;
+  \item safety-factor scaling and design-sweep behaviour; and
+  \item command-line plumbing.
+\end{itemize}
+
+Run the tests and the linter with:
+
+\begin{lstlisting}[style=shellstyle]
+python -m pytest
+python -m ruff check .
+\end{lstlisting}
+
+% ===========================================================================
+\section{Modelling Assumptions and Limitations}
+% ===========================================================================
+
+\begin{itemize}
+  \item \textbf{Plate kinematics.} By default \code{auto} selects the plate model
+    from the radius-to-thickness ratio: Kirchhoff--Love kinematics (no transverse
+    shear) for genuinely thin plates ($t/D < 0.05$, $R/h > 10$), and the
+    shear-deformable Mindlin--Reissner model (Section~\ref{sec:mindlin}) for the
+    transition zone and thicker ($t/D \ge 0.05$, $R/h \le 10$). The default window
+    has $t/D = 0.056$ ($R/h = 9$), which lies in the transition zone, so
+    \code{auto} resolves it to Mindlin; the \code{-{}-plate-theory} flag can force
+    either model explicitly.
+  \item \textbf{Linear-elastic, isotropic material.} No plasticity, viscoelasticity,
+    or anisotropy is modelled.
+  \item \textbf{Radially constrained edge.} The edge is fixed against in-plane
+    radial motion ($u(a)=0$). A free-to-slide edge would reduce membrane
+    stiffening.
+  \item \textbf{Uniform static pressure.} The load is a uniform, static pressure on
+    one face. Dynamic, thermal, and self-weight effects are not included.
+  \item \textbf{Brittle failure criterion.} The safety factor uses a maximum
+    tensile stress criterion appropriate for brittle materials such as fused
+    silica; it does not account for statistical strength (e.g.\ Weibull) or
+    surface-flaw distributions.
+\end{itemize}
+
+% ===========================================================================
+\section{References}
+% ===========================================================================
+
+\begin{enumerate}[noitemsep]
+  \item S.~Timoshenko and S.~Woinowsky-Krieger, \emph{Theory of Plates and
+    Shells}, 2nd ed., McGraw-Hill, 1959.
+  \item L.~D.~Landau and E.~M.~Lifshitz, \emph{Theory of Elasticity},
+    3rd ed., Pergamon Press, 1986 (F\"oppl--von K\'arm\'an equations).
+  \item P.~Virtanen \emph{et al.}, ``SciPy 1.0: Fundamental Algorithms for
+    Scientific Computing in Python,'' \emph{Nature Methods}, 17, 261--272, 2020
+    (the \code{solve\_bvp} collocation solver).
+\end{enumerate}
+
+\end{document}
