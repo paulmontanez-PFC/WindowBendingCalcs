@@ -319,8 +319,8 @@ $\sigma_{\text{allow}}$:
 \end{equation}
 %
 Because fused silica is brittle, the relevant allowable stress is its
-``allowable design stress'' (modulus of rupture / 10). The default allowable
-stress is \qty{4.69}{\mega\pascal} (\num{680} psi).
+``allowable design stress'' as listed in the reference glass-property table.
+The default allowable stress is \qty{4.69}{\mega\pascal} (\num{680} psi).
 
 % ===========================================================================
 \section{Numerical Implementation}
@@ -557,9 +557,12 @@ built-in presets are listed in Table~\ref{tab:materials}. Run
 \begin{table}[h]
   \centering
   \caption{Built-in material presets. Values are nominal room-temperature
-  properties; the allowable stress is the ``allowable design stress'' (modulus of
-  rupture / 10) taken from the reference glass and plastics property tables. Verify against
-  certified data before relying on them for design.}
+  properties. For the glasses the allowable stress is the ``allowable design
+  stress'' listed directly in the reference glass-property table; for methyl
+  methacrylate (\code{acrylic}) it follows table Note~\#8 (design stress limited
+  to the lower of modulus of rupture / 10 or $(9200/10)\times(E/\num{360000})$),
+  giving \num{920} psi at \qty{75}{\degree F}. Verify against certified data
+  before relying on them for design.}
   \label{tab:materials}
   \begin{tabular}{llS[table-format=3.1]S[table-format=1.3]S[table-format=3.2]}
     \toprule

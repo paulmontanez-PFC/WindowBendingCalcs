@@ -72,8 +72,9 @@ EXCEL_FORMAT = "xlsx"
 # --- Default fused silica material properties -------------------------------
 FUSED_SILICA_YOUNGS_MODULUS_PA = 72.0e9
 FUSED_SILICA_POISSON_RATIO = 0.17
-# Allowable design stress = modulus of rupture / 10 (680 psi for fused silica),
-# per the reference glass-property tables. This is also the shared default.
+# Allowable design stress for fused silica (680 psi), taken directly from the
+# "Allowable Design Stress" column of the reference glass-property table. This is
+# also the shared default.
 FUSED_SILICA_ALLOWABLE_STRESS_PA = 680.0 * PA_PER_PSI
 
 # --- Default window geometry / loading --------------------------------------
@@ -180,9 +181,12 @@ class Material:
 
 
 # Named material presets selectable by name (nominal room-temperature values).
-# The allowable stress is the "allowable design stress" = modulus of rupture / 10
-# taken from the reference glass-property tables. Verify against your own
-# certified data before relying on these for design.
+# For the glasses the allowable stress is the "Allowable Design Stress" listed
+# directly in the reference glass-property table. For methyl methacrylate
+# (acrylic) the allowable follows table Note #8, which limits the design stress
+# for that material to the lower of (a) modulus of rupture / 10 or
+# (b) (9200 / 10) * (elastic modulus / 360,000 psi); at 75 F this gives 920 psi.
+# Verify against your own certified data before relying on these for design.
 DEFAULT_MATERIAL_NAME = "fused_silica"
 
 MATERIAL_PRESETS: dict[str, Material] = {
@@ -207,7 +211,7 @@ MATERIAL_PRESETS: dict[str, Material] = {
     ),
     "acrylic": Material(
         360.0e3 * PA_PER_PSI, 0.39, 920.0 * PA_PER_PSI, "Methyl Methacrylate"
-    ),
+    ),  # 920 psi design stress per table Note #8 (methyl methacrylate) at 75 F
     "sapphire": Material(345.0e9, 0.29, 350.0 * PA_PER_MPA, "Sapphire"),
     "zerodur": Material(90.3e9, 0.243, 57.0 * PA_PER_MPA, "Zerodur"),
     "caf2": Material(75.8e9, 0.26, 36.0 * PA_PER_MPA, "Calcium Fluoride"),
