@@ -1,0 +1,15 @@
+# Generated tool output (figures and spreadsheets)
+figures/
+
+# Python caches and tooling
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# LaTeX build artifacts
+*.aux
+*.log
+*.out
+*.toc
+manual_new.*

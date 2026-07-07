@@ -370,6 +370,44 @@ def test_main_saves_jpeg_files(tmp_path):
     assert files == ["single_case_deflection_clamped.jpg", "single_case_stress_clamped.jpg"]
 
 
+def test_figure_format_exports_svg_alongside_jpg(tmp_path):
+    out_dir = tmp_path / "figs"
+    wd.main(["--figure-format", "jpg", "svg", "--output-dir", str(out_dir)])
+    assert sorted(p.name for p in out_dir.glob("*.jpg")) == [
+        "single_case_deflection_clamped.jpg",
+        "single_case_stress_clamped.jpg",
+    ]
+    assert sorted(p.name for p in out_dir.glob("*.svg")) == [
+        "single_case_deflection_clamped.svg",
+        "single_case_stress_clamped.svg",
+    ]
+
+
+def test_figure_format_svg_only_writes_no_jpg(tmp_path):
+    out_dir = tmp_path / "figs"
+    wd.main(["--figure-format", "svg", "--output-dir", str(out_dir)])
+    assert not list(out_dir.glob("*.jpg"))
+    assert sorted(p.name for p in out_dir.glob("*.svg")) == [
+        "single_case_deflection_clamped.svg",
+        "single_case_stress_clamped.svg",
+    ]
+
+
+def test_figure_format_multi_shares_unique_stem(tmp_path):
+    out_dir = tmp_path / "figs"
+    wd.main(["--figure-format", "jpg", "svg", "--output-dir", str(out_dir)])
+    wd.main(["--figure-format", "jpg", "svg", "--output-dir", str(out_dir)])
+    names = {p.name for p in out_dir.iterdir()}
+    # The second run must not overwrite the first; both formats bump together.
+    assert "single_case_deflection_clamped_1.jpg" in names
+    assert "single_case_deflection_clamped_1.svg" in names
+
+
+def test_invalid_figure_format_rejected():
+    with pytest.raises(SystemExit):
+        wd.build_parser().parse_args(["--figure-format", "gif"])
+
+
 def test_existing_files_are_not_overwritten(tmp_path):
     out_dir = tmp_path / "figs"
     wd.main(["--no-excel", "--output-dir", str(out_dir)])

@@ -63,7 +63,10 @@ VON_KARMAN_WT_WARN_RATIO = 5.0
 
 # --- Figure output ----------------------------------------------------------
 FIGURE_DIR = "figures"
-FIGURE_FORMAT = "jpg"
+# Raster and vector figure formats the CLI can emit. JPEG/PNG are raster;
+# SVG/PDF are vector (resolution-independent).
+SUPPORTED_FIGURE_FORMATS = ("jpg", "png", "svg", "pdf")
+DEFAULT_FIGURE_FORMATS = ("jpg",)
 FIGURE_DPI = 150
 
 # --- Spreadsheet output -----------------------------------------------------
@@ -983,10 +986,21 @@ def _held_constant_label(base_config: PlateConfig, sweep_variable: str) -> str:
 
 
 def _get_pyplot():
-    """Return pyplot configured with the non-interactive Agg backend."""
+    """Return pyplot configured with the non-interactive Agg backend.
+
+    The figures use the Computer Modern font (matplotlib's bundled ``cmr10``
+    plus the ``cm`` math set) so the plots match the LaTeX manual. Tick labels
+    are rendered through mathtext and the ASCII hyphen is used for the minus
+    sign, which avoids the missing-glyph warning ``cmr10`` otherwise triggers.
+    """
     import matplotlib
 
     matplotlib.use("Agg", force=True)
+    matplotlib.rcParams["font.family"] = "serif"
+    matplotlib.rcParams["font.serif"] = ["cmr10", "DejaVu Serif"]
+    matplotlib.rcParams["mathtext.fontset"] = "cm"
+    matplotlib.rcParams["axes.formatter.use_mathtext"] = True
+    matplotlib.rcParams["axes.unicode_minus"] = False
     import matplotlib.pyplot as plt
 
     return plt
@@ -1013,14 +1027,50 @@ def _annotate_validity(fig, solution: PlateSolution) -> None:
     )
 
 
-def _save_figure(fig, path: str) -> None:
-    """Save a figure so titles, suptitles and banners are never clipped.
+def _save_figure(fig, paths) -> None:
+    """Save a figure to one or more paths so nothing is clipped.
 
-    ``bbox_inches="tight"`` expands the saved bounding box to enclose every
-    artist, including a wide ``suptitle`` or the validity banner that would
-    otherwise overflow the default figure bounds and be cut off.
+    ``paths`` may be a single path or a sequence of paths (e.g. the same figure
+    exported as both ``.jpg`` and ``.svg``). ``bbox_inches="tight"`` expands the
+    saved bounding box to enclose every artist, including a wide ``suptitle`` or
+    the validity banner that would otherwise overflow and be cut off.
     """
-    fig.savefig(path, dpi=FIGURE_DPI, bbox_inches="tight", pad_inches=0.15)
+    if isinstance(paths, str):
+        paths = [paths]
+    for path in paths:
+        fig.savefig(path, dpi=FIGURE_DPI, bbox_inches="tight", pad_inches=0.15)
+
+
+def _unique_stem(
+    directory: str,
+    name: str,
+    extensions: Sequence[str],
+    boundary_condition: str | None = None,
+) -> str:
+    """Return a path stem (no extension) that collides with none of ``extensions``.
+
+    When ``boundary_condition`` is given, it is always appended to the base name
+    (``{name}_{boundary_condition}``). If any requested extension already exists
+    for that stem, a numeric suffix is added (``..._1``, ``_2``, ...) until a
+    stem is free for every extension, so all formats of one figure share it.
+    """
+    base = f"{name}_{boundary_condition}" if boundary_condition else name
+
+    def taken(stem: str) -> bool:
+        return any(
+            os.path.exists(os.path.join(directory, f"{stem}.{ext}"))
+            for ext in extensions
+        )
+
+    if not taken(base):
+        return os.path.join(directory, base)
+
+    index = 1
+    while True:
+        candidate = f"{base}_{index}"
+        if not taken(candidate):
+            return os.path.join(directory, candidate)
+        index += 1
 
 
 def _unique_path(
@@ -1029,31 +1079,21 @@ def _unique_path(
     extension: str,
     boundary_condition: str | None = None,
 ) -> str:
-    """Return a path under ``directory`` that does not overwrite an existing file.
-
-    When ``boundary_condition`` is given, it is always appended to the base name
-    (``{name}_{boundary_condition}``). If that file already exists, a numeric
-    suffix is added (``{name}_{boundary_condition}_1``, ``_2``, ...) until an
-    unused name is found.
-    """
-    stem = f"{name}_{boundary_condition}" if boundary_condition else name
-    candidate = os.path.join(directory, f"{stem}.{extension}")
-    if not os.path.exists(candidate):
-        return candidate
-
-    index = 1
-    while True:
-        candidate = os.path.join(directory, f"{stem}_{index}.{extension}")
-        if not os.path.exists(candidate):
-            return candidate
-        index += 1
+    """Return a path under ``directory`` that does not overwrite an existing file."""
+    stem = _unique_stem(directory, name, (extension,), boundary_condition)
+    return f"{stem}.{extension}"
 
 
-def _figure_path(
-    name: str, output_dir: str, boundary_condition: str | None = None
-) -> str:
+def _figure_paths(
+    name: str,
+    output_dir: str,
+    figure_formats: Sequence[str] = DEFAULT_FIGURE_FORMATS,
+    boundary_condition: str | None = None,
+) -> list[str]:
+    """Return one output path per requested figure format, sharing a unique stem."""
     os.makedirs(output_dir, exist_ok=True)
-    return _unique_path(output_dir, name, FIGURE_FORMAT, boundary_condition)
+    stem = _unique_stem(output_dir, name, figure_formats, boundary_condition)
+    return [f"{stem}.{ext}" for ext in figure_formats]
 
 
 def _excel_path(
@@ -1440,6 +1480,7 @@ def _plot_single_case(
     solution: PlateSolution,
     output_dir: str = FIGURE_DIR,
     config: PlateConfig | None = None,
+    figure_formats: Sequence[str] = DEFAULT_FIGURE_FORMATS,
 ) -> list[str]:
     plt = _get_pyplot()
 
@@ -1448,7 +1489,9 @@ def _plot_single_case(
     parameter_label = _case_parameter_label(config) if config is not None else None
     bc = config.boundary_condition if config is not None else None
 
-    deflection_path = _figure_path("single_case_deflection", output_dir, bc)
+    deflection_paths = _figure_paths(
+        "single_case_deflection", output_dir, figure_formats, bc
+    )
     plt.figure(figsize=(7, 4.5))
     plt.plot(r_mm, w_mm, linewidth=2)
     plt.xlabel("Radius (mm)")
@@ -1459,10 +1502,10 @@ def _plot_single_case(
         plt.suptitle(parameter_label, fontsize=9)
     _annotate_validity(plt.gcf(), solution)
     plt.tight_layout()
-    _save_figure(plt.gcf(), deflection_path)
+    _save_figure(plt.gcf(), deflection_paths)
     plt.close()
 
-    stress_path = _figure_path("single_case_stress", output_dir, bc)
+    stress_paths = _figure_paths("single_case_stress", output_dir, figure_formats, bc)
     plt.figure(figsize=(7, 4.5))
     plt.plot(r_mm, solution.sigma_r_top_pa / PA_PER_MPA, label=r"$\sigma_r$ top")
     plt.plot(r_mm, solution.sigma_t_top_pa / PA_PER_MPA, label=r"$\sigma_\theta$ top")
@@ -1487,10 +1530,10 @@ def _plot_single_case(
         plt.suptitle(parameter_label, fontsize=9)
     _annotate_validity(plt.gcf(), solution)
     plt.tight_layout()
-    _save_figure(plt.gcf(), stress_path)
+    _save_figure(plt.gcf(), stress_paths)
     plt.close()
 
-    return [deflection_path, stress_path]
+    return [*deflection_paths, *stress_paths]
 
 
 def _plot_sweep(
@@ -1498,6 +1541,7 @@ def _plot_sweep(
     points: Sequence[SweepPoint],
     output_dir: str = FIGURE_DIR,
     base_config: PlateConfig | None = None,
+    figure_formats: Sequence[str] = DEFAULT_FIGURE_FORMATS,
 ) -> list[str]:
     plt = _get_pyplot()
 
@@ -1508,7 +1552,9 @@ def _plot_sweep(
 
     x_label = _sweep_axis_label(sweep_variable)
     bc = base_config.boundary_condition if base_config is not None else None
-    figure_path = _figure_path(f"sweep_{sweep_variable}", output_dir, bc)
+    figure_paths = _figure_paths(
+        f"sweep_{sweep_variable}", output_dir, figure_formats, bc
+    )
 
     plt.figure(figsize=(10, 4.5))
     plt.subplot(1, 2, 1)
@@ -1530,10 +1576,10 @@ def _plot_sweep(
         plt.suptitle(_held_constant_label(base_config, sweep_variable), fontsize=10)
 
     plt.tight_layout()
-    _save_figure(plt.gcf(), figure_path)
+    _save_figure(plt.gcf(), figure_paths)
     plt.close()
 
-    return [figure_path]
+    return figure_paths
 
 
 def _plot_combined_sweep(
@@ -1542,6 +1588,7 @@ def _plot_combined_sweep(
     diameter_values_mm: Sequence[float],
     output_dir: str = FIGURE_DIR,
     base_config: PlateConfig | None = None,
+    figure_formats: Sequence[str] = DEFAULT_FIGURE_FORMATS,
 ) -> list[str]:
     """Plot a thickness x diameter grid sweep as families of curves.
 
@@ -1552,7 +1599,7 @@ def _plot_combined_sweep(
     plt = _get_pyplot()
 
     bc = base_config.boundary_condition if base_config is not None else None
-    figure_path = _figure_path("sweep_combined", output_dir, bc)
+    figure_paths = _figure_paths("sweep_combined", output_dir, figure_formats, bc)
     lookup = {(p.thickness_mm, p.diameter_mm): p for p in points}
     thicknesses = sorted({p.thickness_mm for p in points})
     diameters = sorted({p.diameter_mm for p in points})
@@ -1596,10 +1643,10 @@ def _plot_combined_sweep(
         )
 
     fig.tight_layout()
-    _save_figure(fig, figure_path)
+    _save_figure(fig, figure_paths)
     plt.close(fig)
 
-    return [figure_path]
+    return figure_paths
 
 
 def _print_validity_banner(message: str) -> None:
@@ -1798,7 +1845,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-figures",
         action="store_true",
-        help="Skip writing JPEG figure files (spreadsheets are still written).",
+        help="Skip writing figure files (spreadsheets are still written).",
+    )
+    parser.add_argument(
+        "--figure-format",
+        nargs="+",
+        choices=SUPPORTED_FIGURE_FORMATS,
+        default=list(DEFAULT_FIGURE_FORMATS),
+        metavar="FORMAT",
+        help=(
+            "One or more figure formats to export "
+            f"({', '.join(SUPPORTED_FIGURE_FORMATS)}). Give several to write the "
+            "same figure in each, e.g. --figure-format jpg svg. Default: jpg."
+        ),
     )
     parser.add_argument(
         "--no-excel",
@@ -1865,6 +1924,7 @@ def _run_combined_sweep(
     save_figures: bool,
     save_excel: bool,
     output_dir: str,
+    figure_formats: Sequence[str] = DEFAULT_FIGURE_FORMATS,
 ) -> None:
     """Run the thickness x diameter grid, print matrices, and save outputs."""
     t_start, t_stop, t_count = _default_sweep_bounds(THICKNESS_SWEEP)
@@ -1893,7 +1953,12 @@ def _run_combined_sweep(
 
     if save_figures:
         figures = _plot_combined_sweep(
-            points, thickness_values, diameter_values, output_dir, base_config
+            points,
+            thickness_values,
+            diameter_values,
+            output_dir,
+            base_config,
+            figure_formats,
         )
         for path in figures:
             print(f"Saved figure: {path}")
@@ -1914,9 +1979,12 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     save_figures = not (args.no_save or args.no_figures)
     save_excel = not (args.no_save or args.no_excel)
+    figure_formats = list(dict.fromkeys(args.figure_format))
 
     if args.sweep_variable == COMBINED_SWEEP:
-        _run_combined_sweep(base_config, save_figures, save_excel, args.output_dir)
+        _run_combined_sweep(
+            base_config, save_figures, save_excel, args.output_dir, figure_formats
+        )
         return
 
     if args.sweep_variable != "none":
@@ -1932,7 +2000,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         _print_sweep(args.sweep_variable, points)
         if save_figures:
             for path in _plot_sweep(
-                args.sweep_variable, points, args.output_dir, base_config
+                args.sweep_variable, points, args.output_dir, base_config, figure_formats
             ):
                 print(f"Saved figure: {path}")
         if save_excel:
@@ -1945,7 +2013,9 @@ def main(argv: Sequence[str] | None = None) -> None:
     solution = solve_plate(base_config, n_points=500)
     _print_single_case(base_config, solution)
     if save_figures:
-        for path in _plot_single_case(solution, args.output_dir, base_config):
+        for path in _plot_single_case(
+            solution, args.output_dir, base_config, figure_formats
+        ):
             print(f"Saved figure: {path}")
     if save_excel:
         for path in _export_single_case_excel(base_config, solution, args.output_dir):

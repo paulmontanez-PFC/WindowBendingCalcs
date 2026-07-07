@@ -539,8 +539,9 @@ python window_deformation.py [options]
     \code{-{}-sweep-stop}          & ---     & Sweep stop value \\
     \code{-{}-sweep-count}         & 7       & Number of sweep samples \\
     \code{-{}-output-dir}          & figures & Directory for saved figures and spreadsheets \\
+    \code{-{}-figure-format}       & jpg     & One or more of \code{jpg}, \code{png}, \code{svg}, \code{pdf} (e.g.\ \code{jpg svg}) \\
     \code{-{}-no-save}             & off     & Skip writing all output files (figures and spreadsheets) \\
-    \code{-{}-no-figures}          & off     & Skip only the JPEG figures (still write spreadsheets) \\
+    \code{-{}-no-figures}          & off     & Skip only the figures (still write spreadsheets) \\
     \code{-{}-no-excel}            & off     & Skip only the Excel spreadsheets (still write figures) \\
     \bottomrule
   \end{tabular}
@@ -648,15 +649,34 @@ conservative = replace(wd.MATERIAL_PRESETS["beryllium"],
 \end{lstlisting}
 
 \paragraph{Figure output.} The tool never opens an interactive window. Instead it
-renders results with the non-interactive Agg backend and writes JPEG image files
+renders results with the non-interactive Agg backend and writes image files
 into the output directory (\code{figures/} by default), reporting each saved path
 on the console. A single case produces \code{single\_case\_deflection\_clamped.jpg}
 and \code{single\_case\_stress\_clamped.jpg}; a single-parameter sweep produces
 \code{sweep\_\textit{variable}\_clamped.jpg}; the combined sweep produces
 \code{sweep\_combined\_clamped.jpg} (the trailing boundary-condition name is
-appended automatically---see \emph{Output file naming} below). Pass
+appended automatically---see \emph{Output file naming} below). The figure format
+defaults to JPEG but is selectable with \code{-{}-figure-format}, which accepts one
+or more of \code{jpg}, \code{png}, \code{svg} and \code{pdf}. Passing several
+writes the same figure in each format under a shared name, for example
+\code{-{}-figure-format jpg svg} emits both \code{...\_clamped.jpg} and
+\code{...\_clamped.svg}; \code{svg} and \code{pdf} are resolution-independent
+vector formats suited to publications. Pass
 \code{-{}-no-figures} to skip the figures (while
 still writing spreadsheets), or \code{-{}-no-save} to skip all output files.
+
+\noindent For example, to render each figure as both a JPEG (for quick preview)
+and an SVG (for inclusion in a report or further editing):
+\begin{lstlisting}[style=shellstyle]
+python window_deformation.py --figure-format jpg svg
+\end{lstlisting}
+\noindent which writes, for the default single case,
+\code{single\_case\_deflection\_clamped.jpg} and
+\code{single\_case\_deflection\_clamped.svg} (plus the matching stress pair).
+Because the overwrite guard reserves a stem across \emph{all} requested formats
+at once, re-running the command bumps every format together
+(\code{..\_clamped\_1.jpg} and \code{..\_clamped\_1.svg}), so the raster and
+vector copies of one figure never drift apart.
 
 \paragraph{Spreadsheet output.} Alongside every figure the tool writes an Excel
 workbook (\code{.xlsx}) containing the same numeric results echoed to the console,
@@ -942,9 +962,10 @@ returns a ready-made \code{Material}.
   \item[Safety factor] $\sigma_{\text{allow}} / \sigma_{\max}$.
 \end{description}
 
-The tool always writes its figures as JPEG files (no interactive window). A single
-case produces a deflection profile and a stress profile (radial and hoop on both
-faces); a sweep produces a two-panel figure of deflection versus the swept
+The tool writes its figures as JPEG files by default (no interactive window), and
+can additionally or alternatively emit PNG, SVG or PDF via \code{-{}-figure-format}.
+A single case produces a deflection profile and a stress profile (radial and hoop
+on both faces); a sweep produces a two-panel figure of deflection versus the swept
 variable and peak-stress/safety-factor versus the swept variable. Files are named
 descriptively and written to the output directory (\code{figures/} by default).
 
