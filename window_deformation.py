@@ -971,6 +971,14 @@ def _sweep_axis_label(sweep_variable: str) -> str:
     return "Pressure (Pa)"
 
 
+def _bracket_units(text: str) -> str:
+    """Render a plot label's units in square brackets, e.g. 'Radius (mm)' -> 'Radius [mm]'.
+
+    Only used for figure labels; console and spreadsheet text keep parentheses.
+    """
+    return text.replace("(", "[").replace(")", "]")
+
+
 def _held_constant_label(base_config: PlateConfig, sweep_variable: str) -> str:
     """Return a human-readable summary of the parameters kept fixed in a sweep."""
     parts: list[str] = []
@@ -1001,6 +1009,8 @@ def _get_pyplot():
     matplotlib.rcParams["mathtext.fontset"] = "cm"
     matplotlib.rcParams["axes.formatter.use_mathtext"] = True
     matplotlib.rcParams["axes.unicode_minus"] = False
+    matplotlib.rcParams["lines.linewidth"] = 1.0
+    matplotlib.rcParams["lines.markersize"] = 4.0
     import matplotlib.pyplot as plt
 
     return plt
@@ -1123,10 +1133,56 @@ def _autofit_columns(worksheet) -> None:
         worksheet.column_dimensions[letter].width = width + 2
 
 
+def _write_single_case_profile_sheet(sheet, solution: PlateSolution) -> None:
+    """Populate a worksheet with the full radial displacement/stress profiles.
+
+    Writes one row per solver sample point so the plotted deflection and
+    stress curves are available as tabular data alongside the summary sheet.
+    """
+    sheet.title = "Profile Data"
+
+    header = (
+        "Radius (mm)",
+        "Deflection (mm)",
+        "Sigma_r top (MPa)",
+        "Sigma_theta top (MPa)",
+        "Sigma_r bottom (MPa)",
+        "Sigma_theta bottom (MPa)",
+    )
+    sheet.append(header)
+    for cell in sheet[sheet.max_row]:
+        cell.font = _bold_font()
+
+    r_mm = solution.r_m * MM_PER_M
+    w_mm = solution.w_m * MM_PER_M
+    sigma_r_top = solution.sigma_r_top_pa / PA_PER_MPA
+    sigma_t_top = solution.sigma_t_top_pa / PA_PER_MPA
+    sigma_r_bottom = solution.sigma_r_bottom_pa / PA_PER_MPA
+    sigma_t_bottom = solution.sigma_t_bottom_pa / PA_PER_MPA
+
+    for index in range(r_mm.size):
+        sheet.append(
+            [
+                float(r_mm[index]),
+                float(w_mm[index]),
+                float(sigma_r_top[index]),
+                float(sigma_t_top[index]),
+                float(sigma_r_bottom[index]),
+                float(sigma_t_bottom[index]),
+            ]
+        )
+        data_row = sheet.max_row
+        for column in range(1, len(header) + 1):
+            sheet.cell(row=data_row, column=column).number_format = "0.00000"
+
+    _autofit_columns(sheet)
+
+
 def _export_single_case_excel(
     config: PlateConfig,
     solution: PlateSolution,
     output_dir: str = FIGURE_DIR,
+    excel_name: str | None = None,
 ) -> list[str]:
     """Write the single-case summary to an Excel workbook."""
     from openpyxl import Workbook
@@ -1163,7 +1219,12 @@ def _export_single_case_excel(
     _append_theory_note(sheet)
     _autofit_columns(sheet)
 
-    path = _excel_path("single_case", output_dir, config.boundary_condition)
+    profile_sheet = workbook.create_sheet("Profile Data")
+    _write_single_case_profile_sheet(profile_sheet, solution)
+
+    path = _excel_path(
+        excel_name or "single_case", output_dir, config.boundary_condition
+    )
     workbook.save(path)
     return [path]
 
@@ -1173,6 +1234,7 @@ def _export_sweep_excel(
     points: Sequence[SweepPoint],
     output_dir: str = FIGURE_DIR,
     base_config: PlateConfig | None = None,
+    excel_name: str | None = None,
 ) -> list[str]:
     """Write a single-parameter sweep to an Excel workbook."""
     from openpyxl import Workbook
@@ -1229,7 +1291,7 @@ def _export_sweep_excel(
     _autofit_columns(sheet)
 
     bc = base_config.boundary_condition if base_config is not None else None
-    path = _excel_path(f"sweep_{sweep_variable}", output_dir, bc)
+    path = _excel_path(excel_name or f"sweep_{sweep_variable}", output_dir, bc)
     workbook.save(path)
     return [path]
 
@@ -1329,6 +1391,7 @@ def _export_grid_excel(
     points: Sequence[GridPoint],
     output_dir: str = FIGURE_DIR,
     base_config: PlateConfig | None = None,
+    excel_name: str | None = None,
 ) -> list[str]:
     """Write the combined thickness x diameter grid to an Excel workbook.
 
@@ -1399,7 +1462,7 @@ def _export_grid_excel(
         _autofit_columns(sheet)
 
     bc = base_config.boundary_condition if base_config is not None else None
-    path = _excel_path("sweep_combined", output_dir, bc)
+    path = _excel_path(excel_name or "sweep_combined", output_dir, bc)
     workbook.save(path)
     return [path]
 
@@ -1481,6 +1544,7 @@ def _plot_single_case(
     output_dir: str = FIGURE_DIR,
     config: PlateConfig | None = None,
     figure_formats: Sequence[str] = DEFAULT_FIGURE_FORMATS,
+    figure_name: str | None = None,
 ) -> list[str]:
     plt = _get_pyplot()
 
@@ -1489,13 +1553,14 @@ def _plot_single_case(
     parameter_label = _case_parameter_label(config) if config is not None else None
     bc = config.boundary_condition if config is not None else None
 
+    base_name = figure_name or "single_case"
     deflection_paths = _figure_paths(
-        "single_case_deflection", output_dir, figure_formats, bc
+        f"{base_name}_deflection", output_dir, figure_formats, bc
     )
     plt.figure(figsize=(7, 4.5))
-    plt.plot(r_mm, w_mm, linewidth=2)
-    plt.xlabel("Radius (mm)")
-    plt.ylabel("Deflection (mm)")
+    plt.plot(r_mm, w_mm, linewidth=1.2)
+    plt.xlabel("Radius [mm]")
+    plt.ylabel("Deflection [mm]")
     plt.title("Deflection Profile")
     plt.grid(True, alpha=0.3)
     if parameter_label is not None:
@@ -1505,7 +1570,7 @@ def _plot_single_case(
     _save_figure(plt.gcf(), deflection_paths)
     plt.close()
 
-    stress_paths = _figure_paths("single_case_stress", output_dir, figure_formats, bc)
+    stress_paths = _figure_paths(f"{base_name}_stress", output_dir, figure_formats, bc)
     plt.figure(figsize=(7, 4.5))
     plt.plot(r_mm, solution.sigma_r_top_pa / PA_PER_MPA, label=r"$\sigma_r$ top")
     plt.plot(r_mm, solution.sigma_t_top_pa / PA_PER_MPA, label=r"$\sigma_\theta$ top")
@@ -1521,8 +1586,8 @@ def _plot_single_case(
         "--",
         label=r"$\sigma_\theta$ bottom",
     )
-    plt.xlabel("Radius (mm)")
-    plt.ylabel("Stress (MPa)")
+    plt.xlabel("Radius [mm]")
+    plt.ylabel("Stress [MPa]")
     plt.title("Stress Profiles")
     plt.grid(True, alpha=0.3)
     plt.legend(fontsize=8)
@@ -1542,6 +1607,7 @@ def _plot_sweep(
     output_dir: str = FIGURE_DIR,
     base_config: PlateConfig | None = None,
     figure_formats: Sequence[str] = DEFAULT_FIGURE_FORMATS,
+    figure_name: str | None = None,
 ) -> list[str]:
     plt = _get_pyplot()
 
@@ -1550,22 +1616,22 @@ def _plot_sweep(
     stress = [p.peak_stress_mpa for p in points]
     safety = [p.safety_factor for p in points]
 
-    x_label = _sweep_axis_label(sweep_variable)
+    x_label = _bracket_units(_sweep_axis_label(sweep_variable))
     bc = base_config.boundary_condition if base_config is not None else None
     figure_paths = _figure_paths(
-        f"sweep_{sweep_variable}", output_dir, figure_formats, bc
+        figure_name or f"sweep_{sweep_variable}", output_dir, figure_formats, bc
     )
 
     plt.figure(figsize=(10, 4.5))
     plt.subplot(1, 2, 1)
     plt.plot(values, deflection, marker="o")
     plt.xlabel(x_label)
-    plt.ylabel("Center deflection (mm)")
+    plt.ylabel("Center deflection [mm]")
     plt.title("Deflection vs Sweep Variable")
     plt.grid(True, alpha=0.3)
 
     plt.subplot(1, 2, 2)
-    plt.plot(values, stress, marker="o", label="Peak stress (MPa)")
+    plt.plot(values, stress, marker="o", label="Peak stress [MPa]")
     plt.plot(values, safety, marker="^", label="Safety factor")
     plt.xlabel(x_label)
     plt.title("Stress and Safety vs Sweep Variable")
@@ -1589,6 +1655,7 @@ def _plot_combined_sweep(
     output_dir: str = FIGURE_DIR,
     base_config: PlateConfig | None = None,
     figure_formats: Sequence[str] = DEFAULT_FIGURE_FORMATS,
+    figure_name: str | None = None,
 ) -> list[str]:
     """Plot a thickness x diameter grid sweep as families of curves.
 
@@ -1599,14 +1666,16 @@ def _plot_combined_sweep(
     plt = _get_pyplot()
 
     bc = base_config.boundary_condition if base_config is not None else None
-    figure_paths = _figure_paths("sweep_combined", output_dir, figure_formats, bc)
+    figure_paths = _figure_paths(
+        figure_name or "sweep_combined", output_dir, figure_formats, bc
+    )
     lookup = {(p.thickness_mm, p.diameter_mm): p for p in points}
     thicknesses = sorted({p.thickness_mm for p in points})
     diameters = sorted({p.diameter_mm for p in points})
 
     metrics = (
-        ("Center deflection (mm)", lambda p: p.center_deflection_mm),
-        ("Peak stress (MPa)", lambda p: p.peak_stress_mpa),
+        ("Center deflection [mm]", lambda p: p.center_deflection_mm),
+        ("Peak stress [MPa]", lambda p: p.peak_stress_mpa),
         ("Safety factor", lambda p: p.safety_factor),
     )
 
@@ -1617,7 +1686,7 @@ def _plot_combined_sweep(
         for diameter in diameters:
             y_values = [getter(lookup[(t, diameter)]) for t in thicknesses]
             ax.plot(thicknesses, y_values, marker="o", label=f"{diameter:.0f} mm")
-        ax.set_xlabel("Thickness (mm)")
+        ax.set_xlabel("Thickness [mm]")
         ax.set_ylabel(ylabel)
         ax.set_title(f"{ylabel} vs Thickness")
         ax.grid(True, alpha=0.3)
@@ -1628,7 +1697,7 @@ def _plot_combined_sweep(
         for thickness in thicknesses:
             y_values = [getter(lookup[(thickness, d)]) for d in diameters]
             ax.plot(diameters, y_values, marker="^", label=f"{thickness:.0f} mm")
-        ax.set_xlabel("Diameter (mm)")
+        ax.set_xlabel("Diameter [mm]")
         ax.set_ylabel(ylabel)
         ax.set_title(f"{ylabel} vs Diameter")
         ax.grid(True, alpha=0.3)
@@ -1869,6 +1938,28 @@ def build_parser() -> argparse.ArgumentParser:
         default=FIGURE_DIR,
         help="Directory for saved figures and spreadsheets.",
     )
+    parser.add_argument(
+        "--figure-name",
+        default=None,
+        metavar="NAME",
+        help=(
+            "Base name for saved figure files (the boundary-condition suffix and "
+            "file extension are still appended). In single-case mode the "
+            "deflection and stress plots become NAME_deflection and NAME_stress. "
+            "Defaults to the automatic name (single_case, sweep_<variable>, "
+            "sweep_combined)."
+        ),
+    )
+    parser.add_argument(
+        "--excel-name",
+        default=None,
+        metavar="NAME",
+        help=(
+            "Base name for the saved Excel workbook (the boundary-condition "
+            "suffix and .xlsx extension are still appended). Defaults to the "
+            "automatic name (single_case, sweep_<variable>, sweep_combined)."
+        ),
+    )
     return parser
 
 
@@ -1925,6 +2016,8 @@ def _run_combined_sweep(
     save_excel: bool,
     output_dir: str,
     figure_formats: Sequence[str] = DEFAULT_FIGURE_FORMATS,
+    figure_name: str | None = None,
+    excel_name: str | None = None,
 ) -> None:
     """Run the thickness x diameter grid, print matrices, and save outputs."""
     t_start, t_stop, t_count = _default_sweep_bounds(THICKNESS_SWEEP)
@@ -1959,11 +2052,14 @@ def _run_combined_sweep(
             output_dir,
             base_config,
             figure_formats,
+            figure_name,
         )
         for path in figures:
             print(f"Saved figure: {path}")
     if save_excel:
-        for path in _export_grid_excel(points, output_dir, base_config):
+        for path in _export_grid_excel(
+            points, output_dir, base_config, excel_name
+        ):
             print(f"Saved spreadsheet: {path}")
 
 
@@ -1983,7 +2079,13 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     if args.sweep_variable == COMBINED_SWEEP:
         _run_combined_sweep(
-            base_config, save_figures, save_excel, args.output_dir, figure_formats
+            base_config,
+            save_figures,
+            save_excel,
+            args.output_dir,
+            figure_formats,
+            args.figure_name,
+            args.excel_name,
         )
         return
 
@@ -2000,12 +2102,21 @@ def main(argv: Sequence[str] | None = None) -> None:
         _print_sweep(args.sweep_variable, points)
         if save_figures:
             for path in _plot_sweep(
-                args.sweep_variable, points, args.output_dir, base_config, figure_formats
+                args.sweep_variable,
+                points,
+                args.output_dir,
+                base_config,
+                figure_formats,
+                args.figure_name,
             ):
                 print(f"Saved figure: {path}")
         if save_excel:
             for path in _export_sweep_excel(
-                args.sweep_variable, points, args.output_dir, base_config
+                args.sweep_variable,
+                points,
+                args.output_dir,
+                base_config,
+                args.excel_name,
             ):
                 print(f"Saved spreadsheet: {path}")
         return
@@ -2014,11 +2125,17 @@ def main(argv: Sequence[str] | None = None) -> None:
     _print_single_case(base_config, solution)
     if save_figures:
         for path in _plot_single_case(
-            solution, args.output_dir, base_config, figure_formats
+            solution,
+            args.output_dir,
+            base_config,
+            figure_formats,
+            args.figure_name,
         ):
             print(f"Saved figure: {path}")
     if save_excel:
-        for path in _export_single_case_excel(base_config, solution, args.output_dir):
+        for path in _export_single_case_excel(
+            base_config, solution, args.output_dir, args.excel_name
+        ):
             print(f"Saved spreadsheet: {path}")
 
 

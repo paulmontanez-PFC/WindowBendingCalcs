@@ -484,10 +484,98 @@ def test_main_single_case_saves_excel(tmp_path):
     assert (out_dir / "single_case_clamped.xlsx").is_file()
 
 
+def test_single_case_excel_has_profile_sheet(tmp_path):
+    openpyxl = pytest.importorskip("openpyxl")
+    config = _default_config()
+    solution = wd.solve_plate(config, n_points=60)
+    paths = wd._export_single_case_excel(config, solution, str(tmp_path))
+    workbook = openpyxl.load_workbook(paths[0])
+    assert "Profile Data" in workbook.sheetnames
+    sheet = workbook["Profile Data"]
+    header = [cell.value for cell in sheet[1]]
+    assert header == [
+        "Radius (mm)",
+        "Deflection (mm)",
+        "Sigma_r top (MPa)",
+        "Sigma_theta top (MPa)",
+        "Sigma_r bottom (MPa)",
+        "Sigma_theta bottom (MPa)",
+    ]
+    # One data row per solver sample point plus the header row.
+    assert sheet.max_row == solution.r_m.size + 1
+    first_data = [cell.value for cell in sheet[2]]
+    assert first_data[0] == pytest.approx(solution.r_m[0] * wd.MM_PER_M)
+    assert first_data[1] == pytest.approx(solution.w_m[0] * wd.MM_PER_M)
+
+
 def test_main_sweep_saves_excel(tmp_path):
     out_dir = tmp_path / "figs"
     wd.main(["--sweep-variable", "diameter_mm", "--output-dir", str(out_dir)])
     assert (out_dir / "sweep_diameter_mm_clamped.xlsx").is_file()
+
+
+def test_custom_names_single_case(tmp_path):
+    out_dir = tmp_path / "figs"
+    wd.main(
+        [
+            "--figure-name",
+            "mywindow",
+            "--excel-name",
+            "mydata",
+            "--output-dir",
+            str(out_dir),
+        ]
+    )
+    assert (out_dir / "mywindow_deflection_clamped.jpg").is_file()
+    assert (out_dir / "mywindow_stress_clamped.jpg").is_file()
+    assert (out_dir / "mydata_clamped.xlsx").is_file()
+    # Default-named files must not be produced when custom names are given.
+    assert not (out_dir / "single_case_deflection_clamped.jpg").is_file()
+    assert not (out_dir / "single_case_clamped.xlsx").is_file()
+
+
+def test_custom_names_single_sweep(tmp_path):
+    out_dir = tmp_path / "figs"
+    wd.main(
+        [
+            "--sweep-variable",
+            "thickness_mm",
+            "--sweep-start",
+            "15",
+            "--sweep-stop",
+            "35",
+            "--sweep-count",
+            "3",
+            "--figure-name",
+            "mysweep",
+            "--excel-name",
+            "mysweepdata",
+            "--output-dir",
+            str(out_dir),
+        ]
+    )
+    assert (out_dir / "mysweep_clamped.jpg").is_file()
+    assert (out_dir / "mysweepdata_clamped.xlsx").is_file()
+
+
+def test_custom_names_combined_sweep_keep_boundary_suffix(tmp_path):
+    out_dir = tmp_path / "figs"
+    wd.main(
+        [
+            "--sweep-variable",
+            "all",
+            "--figure-name",
+            "mygrid",
+            "--excel-name",
+            "mygriddata",
+            "--boundary-condition",
+            "simply_supported",
+            "--output-dir",
+            str(out_dir),
+        ]
+    )
+    assert (out_dir / "mygrid_simply_supported.jpg").is_file()
+    assert (out_dir / "mygriddata_simply_supported.xlsx").is_file()
 
 
 def test_main_combined_sweep_saves_excel_with_three_sheets(tmp_path):

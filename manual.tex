@@ -539,6 +539,8 @@ python window_deformation.py [options]
     \code{-{}-sweep-stop}          & ---     & Sweep stop value \\
     \code{-{}-sweep-count}         & 7       & Number of sweep samples \\
     \code{-{}-output-dir}          & figures & Directory for saved figures and spreadsheets \\
+    \code{-{}-figure-name}         & auto    & Base name for figure files (boundary suffix still appended) \\
+    \code{-{}-excel-name}          & auto    & Base name for the Excel workbook (boundary suffix still appended) \\
     \code{-{}-figure-format}       & jpg     & One or more of \code{jpg}, \code{png}, \code{svg}, \code{pdf} (e.g.\ \code{jpg svg}) \\
     \code{-{}-no-save}             & off     & Skip writing all output files (figures and spreadsheets) \\
     \code{-{}-no-figures}          & off     & Skip only the figures (still write spreadsheets) \\
@@ -681,8 +683,12 @@ vector copies of one figure never drift apart.
 \paragraph{Spreadsheet output.} Alongside every figure the tool writes an Excel
 workbook (\code{.xlsx}) containing the same numeric results echoed to the console,
 into the same output directory. A single case produces
-\code{single\_case\_clamped.xlsx}
-(a labelled quantity/value/units table); a single-parameter sweep produces
+\code{single\_case\_clamped.xlsx} with two worksheets: \emph{Single Case}
+(a labelled quantity/value/units summary table) and \emph{Profile Data},
+which tabulates the full radial profiles behind the plotted curves---one row
+per solver sample point giving radius, transverse deflection and the four
+stress components (radial and hoop stress on the top and bottom faces).
+A single-parameter sweep produces
 \code{sweep\_\textit{variable}\_clamped.xlsx} (one row per swept value); and the combined
 sweep produces \code{sweep\_combined\_clamped.xlsx} with four worksheets. The first,
 \emph{Case Details}, lists every grid case with the same per-case quantities
@@ -714,6 +720,20 @@ overwrites an existing output file: if the boundary-condition name is already
 taken, a numeric suffix is added (\code{\textit{name}\_clamped\_1},
 \code{\textit{name}\_clamped\_2}, \ldots) to guarantee uniqueness. The
 console always reports the exact path written.
+
+\paragraph{Custom output names.} The default base names (\code{single\_case},
+\code{sweep\_\textit{variable}}, \code{sweep\_combined}) can be overridden with
+\code{-{}-figure-name} and \code{-{}-excel-name}. The boundary-condition suffix,
+uniqueness suffix and file extension are still appended, so
+\code{-{}-excel-name results} writes \code{results\_clamped.xlsx}. In single-case
+mode the two figures take a plot-type suffix, so \code{-{}-figure-name mywindow}
+writes \code{mywindow\_deflection\_clamped.jpg} and
+\code{mywindow\_stress\_clamped.jpg}. For example,
+\begin{quote}
+\code{python window\_deformation.py -{}-figure-name mywindow -{}-excel-name results}
+\end{quote}
+names the default single case \code{mywindow\_deflection\_clamped.jpg},
+\code{mywindow\_stress\_clamped.jpg} and \code{results\_clamped.xlsx}.
 
 \paragraph{Diameter sweep defaults.} When \code{-{}-sweep-variable diameter\_mm} is
 selected without explicit \code{-{}-sweep-start}/\code{-{}-sweep-stop}, the sweep
