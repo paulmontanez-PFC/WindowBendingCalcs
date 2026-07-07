@@ -314,6 +314,68 @@ def test_acrylic_preset_available():
     assert preset.allowable_stress_pa == pytest.approx(920.0 * wd.PA_PER_PSI)
 
 
+def test_acrylic_note8_helper_picks_worst_case():
+    ref = wd.ACRYLIC_REFERENCE_MODULUS_PA
+    # At the reference modulus both Note #8 options equal 920 psi.
+    assert wd.acrylic_note8_allowable_stress_pa(ref) == pytest.approx(
+        920.0 * wd.PA_PER_PSI
+    )
+    # Below the reference, option (b) scales down and becomes the worst case.
+    assert wd.acrylic_note8_allowable_stress_pa(ref / 2.0) == pytest.approx(
+        460.0 * wd.PA_PER_PSI
+    )
+    # Above the reference, option (a) = MoR/10 caps the allowable at 920 psi.
+    assert wd.acrylic_note8_allowable_stress_pa(ref * 2.0) == pytest.approx(
+        920.0 * wd.PA_PER_PSI
+    )
+
+
+def test_acrylic_default_allowable_is_nominal():
+    config = wd.config_from_args(
+        wd.build_parser().parse_args(["--material", "acrylic"])
+    )
+    assert config.material.allowable_stress_pa == pytest.approx(920.0 * wd.PA_PER_PSI)
+
+
+def test_acrylic_low_modulus_override_lowers_allowable():
+    # A modulus below the 360,000 psi reference must lower the allowable (and
+    # thus the safety factor) instead of keeping the nominal 920 psi.
+    ref = wd.ACRYLIC_REFERENCE_MODULUS_PA
+    config = wd.config_from_args(
+        wd.build_parser().parse_args(
+            ["--material", "acrylic", "--youngs-modulus-pa", str(ref / 2.0)]
+        )
+    )
+    assert config.material.allowable_stress_pa == pytest.approx(460.0 * wd.PA_PER_PSI)
+
+
+def test_acrylic_high_modulus_override_capped_at_nominal():
+    ref = wd.ACRYLIC_REFERENCE_MODULUS_PA
+    config = wd.config_from_args(
+        wd.build_parser().parse_args(
+            ["--material", "acrylic", "--youngs-modulus-pa", str(ref * 2.0)]
+        )
+    )
+    assert config.material.allowable_stress_pa == pytest.approx(920.0 * wd.PA_PER_PSI)
+
+
+def test_acrylic_explicit_allowable_override_wins():
+    ref = wd.ACRYLIC_REFERENCE_MODULUS_PA
+    config = wd.config_from_args(
+        wd.build_parser().parse_args(
+            [
+                "--material",
+                "acrylic",
+                "--youngs-modulus-pa",
+                str(ref / 2.0),
+                "--allowable-stress-mpa",
+                "5",
+            ]
+        )
+    )
+    assert config.material.allowable_stress_pa == pytest.approx(5.0 * wd.PA_PER_MPA)
+
+
 def test_list_materials_prints_table_and_skips_solve(capsys):
     wd.main(["--list-materials"])
     captured = capsys.readouterr()

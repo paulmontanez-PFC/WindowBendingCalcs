@@ -47,7 +47,16 @@
   showstringspaces=false,
 }
 
-\newcommand{\code}[1]{\texttt{#1}}
+% Inline monospace that is allowed to break across lines (so long option
+% names, file names and identifiers do not overrun the right margin). Breaks
+% are permitted after underscores in addition to TeX's default break after
+% explicit hyphens.
+\newcommand{\codeus}{\textunderscore\allowbreak}
+\newcommand{\code}[1]{\texttt{\ifmmode\else\renewcommand{\_}{\codeus}\fi#1}}
+
+% Allow TeX a little extra stretch on the final pass so prose lines that end
+% with a long code token or identifier do not overrun the right margin.
+\setlength{\emergencystretch}{3em}
 
 \title{\textbf{WindowBending}\\[4pt]
 \large Nonlinear Deformation Analysis of Pressurized Circular Windows\\[6pt]
@@ -464,7 +473,7 @@ numerical core is independent of the command-line interface and plotting.
   \item[\code{SweepPoint}] One evaluated case of a design sweep: the swept value,
     centre deflection (\unit{\milli\meter}), peak stress (\unit{\mega\pascal}), and safety factor.
   \item[\code{GridPoint}] One evaluated case of a combined grid sweep: thickness
-    (\unit{\milli\meter}), diameter (\unit{\milli\meter}), thickness/diameter ratio,
+    (\unit{\milli\meter}), diameter (\unit{\milli\meter}), thickness/\allowbreak diameter ratio,
     resolved plate theory, linear and nonlinear centre deflection (\unit{\milli\meter}),
     peak stress (\unit{\mega\pascal}), and safety factor.
 \end{description}
@@ -520,7 +529,7 @@ python window_deformation.py [options]
   \centering
   \caption{Command-line options.}
   \label{tab:cli}
-  \begin{tabular}{lll}
+  \begin{tabular}{@{}l l p{8.2cm}@{}}
     \toprule
     Option & Default & Description \\
     \midrule
@@ -564,8 +573,12 @@ built-in presets are listed in Table~\ref{tab:materials}. Run
   stress'' listed directly in the reference glass-property table; for methyl
   methacrylate (\code{acrylic}) it follows table Note~\#8 (design stress limited
   to the lower of modulus of rupture / 10 or $(9200/10)\times(E/\num{360000})$),
-  giving \num{920} psi at \qty{75}{\degree F}. Verify against certified data
-  before relying on them for design.}
+  giving \num{920} psi at \qty{75}{\degree F}. Because option~(b) of that rule
+  scales with the elastic modulus, overriding \code{-{}-youngs-modulus-pa} for
+  \code{acrylic} recomputes the worst case of the two options: a modulus below
+  the \num{360000} psi reference lowers the allowable below \num{920} psi, while
+  a modulus at or above it stays capped at \num{920} psi. Verify against
+  certified data before relying on them for design.}
   \label{tab:materials}
   \begin{tabular}{llS[table-format=3.1]S[table-format=1.3]S[table-format=3.2]}
     \toprule
@@ -910,7 +923,7 @@ python window_deformation.py --sweep-variable all
 
 \noindent Console output (abbreviated):
 
-\begin{lstlisting}[style=shellstyle]
+\begin{lstlisting}[style=shellstyle, basicstyle=\ttfamily\footnotesize]
 === Combined Sweep: Center Deflection (mm) ===
 Rows: Thickness (mm)  |  Columns: Diameter (mm)
    Thk\Dia         250.0         300.0         350.0         400.0         450.0

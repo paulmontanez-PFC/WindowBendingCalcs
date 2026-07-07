@@ -192,6 +192,30 @@ class Material:
 # Verify against your own certified data before relying on these for design.
 DEFAULT_MATERIAL_NAME = "fused_silica"
 
+# Table Note #8 parameters for methyl methacrylate (acrylic). Option (b) of the
+# rule scales with the elastic modulus, so overriding the modulus below the
+# reference lowers the worst-case allowable below the nominal 920 psi.
+ACRYLIC_MATERIAL_KEY = "acrylic"
+ACRYLIC_MODULUS_OF_RUPTURE_PA = 9200.0 * PA_PER_PSI
+ACRYLIC_REFERENCE_MODULUS_PA = 360.0e3 * PA_PER_PSI
+
+
+def acrylic_note8_allowable_stress_pa(youngs_modulus_pa: float) -> float:
+    """Return the methyl-methacrylate allowable design stress from table Note #8.
+
+    Note #8 caps the acrylic design stress at the lower (worst case) of
+    (a) modulus of rupture / 10, or
+    (b) (modulus of rupture / 10) * (E / E_ref),
+    where E_ref = 360,000 psi. Option (b) scales with the elastic modulus, so a
+    modulus below E_ref lowers the allowable below the nominal 920 psi, while a
+    modulus at or above E_ref leaves it capped at 920 psi by option (a). At
+    E = E_ref both options equal 920 psi.
+    """
+    option_a = ACRYLIC_MODULUS_OF_RUPTURE_PA / 10.0
+    option_b = option_a * (youngs_modulus_pa / ACRYLIC_REFERENCE_MODULUS_PA)
+    return min(option_a, option_b)
+
+
 MATERIAL_PRESETS: dict[str, Material] = {
     "fused_silica": Material(
         youngs_modulus_pa=FUSED_SILICA_YOUNGS_MODULUS_PA,
@@ -214,7 +238,8 @@ MATERIAL_PRESETS: dict[str, Material] = {
     ),
     "acrylic": Material(
         360.0e3 * PA_PER_PSI, 0.39, 920.0 * PA_PER_PSI, "Methyl Methacrylate"
-    ),  # 920 psi design stress per table Note #8 (methyl methacrylate) at 75 F
+    ),  # Nominal 920 psi per Note #8 at E_ref; config_from_args recomputes the
+    # worst-case allowable from the modulus when --youngs-modulus-pa is set.
     "sapphire": Material(345.0e9, 0.29, 350.0 * PA_PER_MPA, "Sapphire"),
     "zerodur": Material(90.3e9, 0.243, 57.0 * PA_PER_MPA, "Zerodur"),
     "caf2": Material(75.8e9, 0.26, 36.0 * PA_PER_MPA, "Calcium Fluoride"),
@@ -1965,22 +1990,28 @@ def build_parser() -> argparse.ArgumentParser:
 
 def config_from_args(args: argparse.Namespace) -> PlateConfig:
     preset = MATERIAL_PRESETS[args.material]
+    youngs_modulus_pa = (
+        args.youngs_modulus_pa
+        if args.youngs_modulus_pa is not None
+        else preset.youngs_modulus_pa
+    )
+    if args.allowable_stress_mpa is not None:
+        allowable_stress_pa = args.allowable_stress_mpa * PA_PER_MPA
+    elif args.material == ACRYLIC_MATERIAL_KEY:
+        # Methyl methacrylate follows table Note #8: recompute the worst-case
+        # allowable from the resolved modulus so a modulus override is honoured
+        # instead of assuming the nominal 920 psi.
+        allowable_stress_pa = acrylic_note8_allowable_stress_pa(youngs_modulus_pa)
+    else:
+        allowable_stress_pa = preset.allowable_stress_pa
     material = Material(
-        youngs_modulus_pa=(
-            args.youngs_modulus_pa
-            if args.youngs_modulus_pa is not None
-            else preset.youngs_modulus_pa
-        ),
+        youngs_modulus_pa=youngs_modulus_pa,
         poisson_ratio=(
             args.poisson_ratio
             if args.poisson_ratio is not None
             else preset.poisson_ratio
         ),
-        allowable_stress_pa=(
-            args.allowable_stress_mpa * PA_PER_MPA
-            if args.allowable_stress_mpa is not None
-            else preset.allowable_stress_pa
-        ),
+        allowable_stress_pa=allowable_stress_pa,
         name=preset.name,
     )
     return PlateConfig.from_engineering_units(
