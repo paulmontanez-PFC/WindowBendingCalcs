@@ -1843,8 +1843,14 @@ def _plot_combined_sweep(
     return figure_paths
 
 
-def _print_validity_banner(message: str) -> None:
-    """Print an unmissable boxed banner for a model-validity breach to stderr."""
+def _print_validity_banner(
+    message: str, heading: str = "!!! MODEL VALIDITY WARNING !!!"
+) -> None:
+    """Print an unmissable boxed banner to stderr.
+
+    ``heading`` defaults to the model-validity warning text but can be
+    overridden for other high-visibility notices (e.g. CLI-usage warnings).
+    """
     import sys
 
     wrapped: list[str] = []
@@ -1859,10 +1865,10 @@ def _print_validity_banner(message: str) -> None:
         wrapped.append(line)
 
     width = max(len(line) for line in wrapped)
-    width = max(width, len("!!! MODEL VALIDITY WARNING !!!"))
+    width = max(width, len(heading))
     border = "*" * (width + 6)
     print(border, file=sys.stderr)
-    print("*  " + "!!! MODEL VALIDITY WARNING !!!".ljust(width) + "  *", file=sys.stderr)
+    print("*  " + heading.ljust(width) + "  *", file=sys.stderr)
     print("*  " + " " * width + "  *", file=sys.stderr)
     for line in wrapped:
         print("*  " + line.ljust(width) + "  *", file=sys.stderr)
@@ -2025,12 +2031,74 @@ def build_parser() -> argparse.ArgumentParser:
         default="none",
         help=(
             "Optional design sweep variable. Use 'all' to combine the thickness "
-            "and diameter sweeps into one chart (at the fixed pressure)."
+            "and diameter sweeps into one chart (at the fixed pressure). In 'all' "
+            "mode set the ranges with --thickness-sweep-* and --diameter-sweep-* "
+            "(the plain --sweep-* flags apply only to a single-variable sweep)."
         ),
     )
     parser.add_argument("--sweep-start", type=float, default=None)
     parser.add_argument("--sweep-stop", type=float, default=None)
-    parser.add_argument("--sweep-count", type=int, default=7)
+    parser.add_argument("--sweep-count", type=int, default=None)
+    parser.add_argument(
+        "--thickness-sweep-start",
+        type=float,
+        default=None,
+        metavar="MM",
+        help=(
+            "Thickness-leg start [mm] for the combined 'all' grid. "
+            f"Default: {DEFAULT_THICKNESS_SWEEP_START_MM:g}."
+        ),
+    )
+    parser.add_argument(
+        "--thickness-sweep-stop",
+        type=float,
+        default=None,
+        metavar="MM",
+        help=(
+            "Thickness-leg stop [mm] for the combined 'all' grid. "
+            f"Default: {DEFAULT_THICKNESS_SWEEP_STOP_MM:g}."
+        ),
+    )
+    parser.add_argument(
+        "--thickness-sweep-count",
+        type=int,
+        default=None,
+        metavar="N",
+        help=(
+            "Number of thickness points for the combined 'all' grid. "
+            f"Default: {DEFAULT_THICKNESS_SWEEP_COUNT:g}."
+        ),
+    )
+    parser.add_argument(
+        "--diameter-sweep-start",
+        type=float,
+        default=None,
+        metavar="MM",
+        help=(
+            "Diameter-leg start [mm] for the combined 'all' grid. "
+            f"Default: {DEFAULT_DIAMETER_SWEEP_START_MM:g}."
+        ),
+    )
+    parser.add_argument(
+        "--diameter-sweep-stop",
+        type=float,
+        default=None,
+        metavar="MM",
+        help=(
+            "Diameter-leg stop [mm] for the combined 'all' grid. "
+            f"Default: {DEFAULT_DIAMETER_SWEEP_STOP_MM:g}."
+        ),
+    )
+    parser.add_argument(
+        "--diameter-sweep-count",
+        type=int,
+        default=None,
+        metavar="N",
+        help=(
+            "Number of diameter points for the combined 'all' grid. "
+            f"Default: {DEFAULT_DIAMETER_SWEEP_COUNT:g}."
+        ),
+    )
     parser.add_argument(
         "--no-save",
         action="store_true",
@@ -2141,6 +2209,34 @@ def _default_sweep_bounds(sweep_variable: str) -> tuple[float, float, int]:
     raise ValueError(f"No default bounds defined for sweep variable {sweep_variable!r}.")
 
 
+def _resolve_grid_leg_bounds(
+    sweep_variable: str,
+    overrides: tuple[float | None, float | None, int | None],
+) -> tuple[float, float, int]:
+    """Resolve (start, stop, count) for one leg of the combined grid.
+
+    Any value left as ``None`` falls back to the built-in default for that
+    sweep variable, so the user can override just the start, just the count,
+    etc. The resolved values are validated the same way as a 1-D sweep.
+    """
+    default_start, default_stop, default_count = _default_sweep_bounds(sweep_variable)
+    start_override, stop_override, count_override = overrides
+    start = default_start if start_override is None else start_override
+    stop = default_stop if stop_override is None else stop_override
+    count = default_count if count_override is None else count_override
+
+    label = _sweep_axis_label(sweep_variable)
+    if count < 2:
+        raise ValueError(f"{label} sweep count must be at least 2 (got {count}).")
+    if start <= 0.0 or stop <= 0.0:
+        raise ValueError(f"{label} sweep bounds must be positive (got {start}, {stop}).")
+    if start >= stop:
+        raise ValueError(
+            f"{label} sweep start must be less than stop (got {start} >= {stop})."
+        )
+    return start, stop, count
+
+
 def _run_combined_sweep(
     base_config: PlateConfig,
     save_figures: bool,
@@ -2149,10 +2245,16 @@ def _run_combined_sweep(
     figure_formats: Sequence[str] = DEFAULT_FIGURE_FORMATS,
     figure_name: str | None = None,
     excel_name: str | None = None,
+    thickness_bounds: tuple[float | None, float | None, int | None] = (None, None, None),
+    diameter_bounds: tuple[float | None, float | None, int | None] = (None, None, None),
 ) -> None:
     """Run the thickness x diameter grid, print matrices, and save outputs."""
-    t_start, t_stop, t_count = _default_sweep_bounds(THICKNESS_SWEEP)
-    d_start, d_stop, d_count = _default_sweep_bounds(DIAMETER_SWEEP)
+    t_start, t_stop, t_count = _resolve_grid_leg_bounds(
+        THICKNESS_SWEEP, thickness_bounds
+    )
+    d_start, d_stop, d_count = _resolve_grid_leg_bounds(
+        DIAMETER_SWEEP, diameter_bounds
+    )
     thickness_values = np.linspace(t_start, t_stop, t_count)
     diameter_values = np.linspace(d_start, d_stop, d_count)
 
@@ -2209,6 +2311,23 @@ def main(argv: Sequence[str] | None = None) -> None:
     figure_formats = list(dict.fromkeys(args.figure_format))
 
     if args.sweep_variable == COMBINED_SWEEP:
+        ignored = [
+            name
+            for name, value in (
+                ("--sweep-start", args.sweep_start),
+                ("--sweep-stop", args.sweep_stop),
+                ("--sweep-count", args.sweep_count),
+            )
+            if value is not None
+        ]
+        if ignored:
+            _print_validity_banner(
+                f"Ignoring {', '.join(ignored)} in combined ('all') sweep mode. "
+                "These flags apply only to a single-variable sweep. To set the "
+                "grid ranges use --thickness-sweep-start/-stop/-count and "
+                "--diameter-sweep-start/-stop/-count instead.",
+                heading="!!! IGNORED ARGUMENTS WARNING !!!",
+            )
         _run_combined_sweep(
             base_config,
             save_figures,
@@ -2217,11 +2336,23 @@ def main(argv: Sequence[str] | None = None) -> None:
             figure_formats,
             args.figure_name,
             args.excel_name,
+            thickness_bounds=(
+                args.thickness_sweep_start,
+                args.thickness_sweep_stop,
+                args.thickness_sweep_count,
+            ),
+            diameter_bounds=(
+                args.diameter_sweep_start,
+                args.diameter_sweep_stop,
+                args.diameter_sweep_count,
+            ),
         )
         return
 
     if args.sweep_variable != "none":
         start, stop, count = args.sweep_start, args.sweep_stop, args.sweep_count
+        if count is None:
+            count = 7
         if args.sweep_variable == DIAMETER_SWEEP and start is None and stop is None:
             start, stop, count = _default_sweep_bounds(DIAMETER_SWEEP)
         if start is None or stop is None:

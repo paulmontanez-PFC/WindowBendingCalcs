@@ -569,6 +569,31 @@ def test_main_combined_sweep_prints_grid_matrices(capsys):
     assert "450.0" in captured.out
 
 
+def test_main_combined_sweep_warns_on_ignored_single_sweep_flags(capsys):
+    wd.main(["--sweep-variable", "all", "--sweep-start", "10", "--no-save"])
+    captured = capsys.readouterr()
+    assert "IGNORED ARGUMENTS WARNING" in captured.err
+    assert "--sweep-start" in captured.err
+    # Points the user at the correct grid flags.
+    assert "--thickness-sweep-start" in captured.err
+    # The grid still runs after the warning.
+    assert "Center Deflection (mm)" in captured.out
+
+
+def test_main_combined_sweep_no_warning_without_single_sweep_flags(capsys):
+    wd.main(
+        [
+            "--sweep-variable",
+            "all",
+            "--thickness-sweep-stop",
+            "60",
+            "--no-save",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert "IGNORED ARGUMENTS WARNING" not in captured.err
+
+
 def test_main_combined_sweep_saves_single_figure(tmp_path):
     out_dir = tmp_path / "figs"
     wd.main(["--sweep-variable", "all", "--output-dir", str(out_dir)])

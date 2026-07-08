@@ -52,7 +52,7 @@
 % are permitted after underscores in addition to TeX's default break after
 % explicit hyphens.
 \newcommand{\codeus}{\textunderscore\allowbreak}
-\newcommand{\code}[1]{\texttt{\ifmmode\else\renewcommand{\_}{\codeus}\fi#1}}
+\DeclareRobustCommand{\code}[1]{\texttt{\ifmmode\else\renewcommand{\_}{\codeus}\fi#1}}
 
 % Allow TeX a little extra stretch on the final pass so prose lines that end
 % with a long code token or identifier do not overrun the right margin.
@@ -545,9 +545,15 @@ python window_deformation.py [options]
     \code{-{}-boundary-condition}  & clamped & \code{clamped} or \code{simply\_supported} \\
     \code{-{}-plate-theory}        & auto    & \code{kirchhoff}, \code{mindlin}, or \code{auto} (Mindlin when $R/h\le10$, i.e.\ $t/D\ge0.05$) \\
     \code{-{}-sweep-variable}      & none    & \code{none}, \code{thickness\_mm}, \code{pressure\_pa}, \code{diameter\_mm}, or \code{all} \\
-    \code{-{}-sweep-start}         & ---     & Sweep start value \\
-    \code{-{}-sweep-stop}          & ---     & Sweep stop value \\
-    \code{-{}-sweep-count}         & 7       & Number of sweep samples \\
+    \code{-{}-sweep-start}         & ---     & Sweep start value (single-variable sweep only) \\
+    \code{-{}-sweep-stop}          & ---     & Sweep stop value (single-variable sweep only) \\
+    \code{-{}-sweep-count}         & 7       & Number of sweep samples (single-variable sweep only) \\
+    \code{-{}-thickness-sweep-start} & 15    & Thickness-leg start (\unit{\milli\meter}) for the \code{all} grid \\
+    \code{-{}-thickness-sweep-stop}  & 35    & Thickness-leg stop (\unit{\milli\meter}) for the \code{all} grid \\
+    \code{-{}-thickness-sweep-count} & 5     & Number of thickness points for the \code{all} grid \\
+    \code{-{}-diameter-sweep-start}  & 250   & Diameter-leg start (\unit{\milli\meter}) for the \code{all} grid \\
+    \code{-{}-diameter-sweep-stop}   & 450   & Diameter-leg stop (\unit{\milli\meter}) for the \code{all} grid \\
+    \code{-{}-diameter-sweep-count}  & 5     & Number of diameter points for the \code{all} grid \\
     \code{-{}-output-dir}          & figures & Directory for saved figures and spreadsheets \\
     \code{-{}-figure-name}         & auto    & Base name for figure files (boundary suffix still appended) \\
     \code{-{}-excel-name}          & auto    & Base name for the Excel workbook (boundary suffix still appended) \\
@@ -781,10 +787,20 @@ versus diameter with one curve per thickness. The three columns are center
 deflection, peak tensile stress and safety factor. The thickness axis defaults to
 \qtyrange{15}{35}{\milli\meter} in $5$ steps and the diameter axis to \qtyrange{250}{450}{\milli\meter} in $5$ steps
 ($25$ solved cases). The pressure sweep is intentionally excluded so that the
-whole grid shares one loading condition. Explicit
-\code{-{}-sweep-start}/\code{-{}-sweep-stop}/\code{-{}-sweep-count} values are
-ignored in this mode. The console prints three matrices (deflection, stress and
-safety factor) with thickness as rows and diameter as columns.
+whole grid shares one loading condition. Each grid leg has its own range flags:
+\code{-{}-thickness-sweep-start}/\code{-{}-thickness-sweep-stop}/\code{-{}-thickness-sweep-count}
+control the thickness axis and
+\code{-{}-diameter-sweep-start}/\code{-{}-diameter-sweep-stop}/\code{-{}-diameter-sweep-count}
+control the diameter axis; any flag left unset falls back to the default above, so a
+single leg can be widened without respecifying the other. The plain
+\code{-{}-sweep-start}/\code{-{}-sweep-stop}/\code{-{}-sweep-count} values apply only to
+single-variable sweeps and are ignored in this mode; if any of them is supplied
+alongside \code{-{}-sweep-variable all} the program prints a boxed
+\emph{ignored arguments} warning to \code{stderr} naming the offending flags and
+pointing to the grid-range flags, then continues with the default (or
+grid-flag) ranges. The console prints three
+matrices (deflection, stress and safety factor) with thickness as rows and diameter
+as columns.
 
 \paragraph{Fixed-parameter annotations.} Every figure states which parameters are
 held fixed through a compact two-line subtitle: the top line lists the analysed
@@ -960,6 +976,44 @@ Rows: Thickness (mm)  |  Columns: Diameter (mm)
 
 === Combined Sweep: Safety Factor ===
    ... (thickness x diameter matrix) ...
+\end{lstlisting}
+
+\noindent Both grid legs accept their own range flags. For example, to sweep the
+thickness from \qtyrange{25}{70}{\milli\meter} in $10$ steps on a simply supported
+edge while leaving the diameter leg at its default (\qtyrange{250}{450}{\milli\meter}):
+
+\begin{lstlisting}[style=shellstyle]
+python window_deformation.py --boundary-condition simply_supported \
+    --sweep-variable all \
+    --thickness-sweep-start 25 --thickness-sweep-stop 70 \
+    --thickness-sweep-count 10
+\end{lstlisting}
+
+\noindent Either leg can be overridden independently. This widens \emph{both} axes at
+once (thickness \qtyrange{25}{70}{\milli\meter} in $10$ steps and diameter
+\qtyrange{200}{500}{\milli\meter} in $7$ steps):
+
+\begin{lstlisting}[style=shellstyle]
+python window_deformation.py --sweep-variable all \
+    --thickness-sweep-start 25 --thickness-sweep-stop 70 --thickness-sweep-count 10 \
+    --diameter-sweep-start 200 --diameter-sweep-stop 500 --diameter-sweep-count 7
+\end{lstlisting}
+
+\noindent Any flag left unset keeps its default, so a single leg can be retuned
+without respecifying the other. The plain \code{-{}-sweep-start}/\code{-{}-sweep-stop}/\code{-{}-sweep-count}
+flags are for single-variable sweeps and have no effect in \code{all} mode; supplying
+one of them here triggers a boxed warning that names the ignored flag(s), for example:
+
+\begin{lstlisting}[style=shellstyle, basicstyle=\ttfamily\footnotesize]
+$ python window_deformation.py --sweep-variable all --sweep-start 10
+****************************************************************************
+*  !!! IGNORED ARGUMENTS WARNING !!!                                       *
+*                                                                          *
+*  Ignoring --sweep-start in combined ('all') sweep mode. These flags      *
+*  apply only to a single-variable sweep. To set the grid ranges use       *
+*  --thickness-sweep-start/-stop/-count and                                *
+*  --diameter-sweep-start/-stop/-count instead.                            *
+****************************************************************************
 \end{lstlisting}
 
 \subsection{Programmatic use}
