@@ -838,7 +838,7 @@ def test_excel_includes_plate_theory_threshold_note(tmp_path, args, filename, sh
 
     note = None
     for row in sheet.iter_rows(values_only=True):
-        if row and row[0] == "Note":
+        if row and row[0] == "Note" and row[1] and "Plate theory selection" in row[1]:
             note = row[1]
             break
 
@@ -849,6 +849,48 @@ def test_excel_includes_plate_theory_threshold_note(tmp_path, args, filename, sh
     assert "R/h" in note
     assert "Kirchhoff" in note
     assert "Mindlin" in note
+
+
+@pytest.mark.parametrize(
+    ("args", "filename", "sheet_name", "both_columns"),
+    [
+        ([], "single_case_fused_silica_clamped.xlsx", "Single Case", True),
+        (
+            ["--sweep-variable", "thickness_mm", "--sweep-start", "15",
+             "--sweep-stop", "35", "--sweep-count", "5"],
+            "sweep_thickness_mm_fused_silica_clamped.xlsx",
+            "Design Sweep",
+            False,
+        ),
+        (
+            ["--sweep-variable", "all"],
+            "sweep_combined_fused_silica_clamped.xlsx",
+            "Case Details",
+            True,
+        ),
+    ],
+)
+def test_excel_includes_deflection_guidance_note(
+    tmp_path, args, filename, sheet_name, both_columns
+):
+    openpyxl = pytest.importorskip("openpyxl")
+    out_dir = tmp_path / "figs"
+    wd.main([*args, "--output-dir", str(out_dir)])
+    sheet = openpyxl.load_workbook(out_dir / filename)[sheet_name]
+
+    note = None
+    for row in sheet.iter_rows(values_only=True):
+        if row and row[0] == "Note" and row[1] and "deflection" in row[1].lower():
+            if "Plate theory selection" in row[1]:
+                continue
+            note = row[1]
+            break
+
+    assert note is not None
+    assert "NONLINEAR" in note
+    assert "w0/t" in note
+    if both_columns:
+        assert "Linear center deflection" in note
 
 
 def test_no_save_skips_excel(tmp_path):

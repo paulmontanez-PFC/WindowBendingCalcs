@@ -1280,6 +1280,7 @@ def _export_single_case_excel(
     if solution.validity_warning is not None:
         _append_validity_row(sheet, solution.validity_warning)
 
+    _append_deflection_note(sheet, both_columns=True)
     _append_theory_note(sheet)
     _autofit_columns(sheet)
 
@@ -1358,6 +1359,7 @@ def _export_sweep_excel(
             f"(w0/t > {VON_KARMAN_WT_WARN_RATIO:g}); swept value(s): {flagged}. "
             "Those cases require a large-rotation shell model.",
         )
+    _append_deflection_note(sheet, both_columns=False)
     _append_theory_note(sheet)
     _autofit_columns(sheet)
 
@@ -1488,6 +1490,7 @@ def _write_grid_details_sheet(
             f"(w0/t > {VON_KARMAN_WT_WARN_RATIO:g}); case(s): {combos}. "
             "Those require a large-rotation shell model.",
         )
+    _append_deflection_note(sheet, both_columns=True)
     _append_theory_note(sheet)
     _autofit_columns(sheet)
 
@@ -1599,6 +1602,47 @@ def _append_theory_note(sheet) -> None:
             "kirchhoff or mindlin choice overrides this rule.",
         ]
     )
+    row = sheet.max_row
+    note_font = Font(italic=True)
+    for column in (1, 2):
+        sheet.cell(row=row, column=column).font = note_font
+
+
+def _append_deflection_note(sheet, both_columns: bool = True) -> None:
+    """Append an italic note explaining linear vs nonlinear center deflection.
+
+    When ``both_columns`` is True the sheet reports both a linear and a
+    nonlinear center-deflection column; otherwise (single-parameter sweep) the
+    single ``Center Deflection`` column already holds the nonlinear value.
+    """
+    from openpyxl.styles import Font
+
+    if both_columns:
+        message = (
+            "Center deflection is reported two ways. Linear center deflection is "
+            "the small-deflection (Kirchhoff/Mindlin, bending-only) result and "
+            "scales in direct proportion to pressure. Nonlinear center deflection "
+            "adds Foppl-von Karman membrane stiffening (the mid-surface stretches "
+            "as it deflects), so it is the physically complete value and is "
+            "generally smaller once deflections approach the thickness. Use the "
+            "NONLINEAR center deflection for design; the linear column is a "
+            "reference. The two agree closely while w0/t (center deflection / "
+            f"thickness) is small (<~0.3); the gap grows as w0/t rises, and above "
+            f"w0/t = {VON_KARMAN_WT_WARN_RATIO:g} even the nonlinear model is "
+            "flagged as out of range (use a large-rotation shell/FEA model)."
+        )
+    else:
+        message = (
+            "Center Deflection is the NONLINEAR (Foppl-von Karman) center "
+            "deflection, which includes membrane stiffening and is the "
+            "recommended value for design. It agrees with the small-deflection "
+            "(linear) result while w0/t (center deflection / thickness) is small "
+            f"(<~0.3); above w0/t = {VON_KARMAN_WT_WARN_RATIO:g} the model is "
+            "flagged as out of range (use a large-rotation shell/FEA model)."
+        )
+
+    sheet.append([])
+    sheet.append(["Note", message])
     row = sheet.max_row
     note_font = Font(italic=True)
     for column in (1, 2):

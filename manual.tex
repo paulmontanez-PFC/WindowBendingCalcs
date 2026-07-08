@@ -1065,12 +1065,36 @@ returns a ready-made \code{Material}.
 
 \begin{description}[style=nextline]
   \item[Linear center deflection] $w_{0}^{\text{lin}}$ from
-    Eq.~\eqref{eq:clamped-linear} or~\eqref{eq:ss-linear}; a quick sanity baseline.
-  \item[Nonlinear center deflection] $w(0)$ from the full von K\'arm\'an solve.
+    Eq.~\eqref{eq:clamped-linear} or~\eqref{eq:ss-linear}: the small-deflection
+    (bending-only) baseline. It scales in direct proportion to pressure and
+    ignores membrane stretching, so it is a quick sanity check rather than the
+    design value.
+  \item[Nonlinear center deflection] $w(0)$ from the full von K\'arm\'an solve,
+    which adds the membrane stiffening that develops as the mid-surface stretches.
+    This is the physically complete value and the one recommended for design.
   \item[Peak tensile stress] $\sigma_{\max}$, the governing quantity for brittle
     fracture.
   \item[Safety factor] $\sigma_{\text{allow}} / \sigma_{\max}$.
 \end{description}
+
+\paragraph{Which deflection to use.} Report and design with the \emph{nonlinear}
+center deflection; it is the value carried through every other output (the plotted
+curves, the combined-grid matrices and the stress/safety results are all consistent
+with it), while the linear column is provided only as a reference. The two agree
+closely while the normalised deflection $w_{0}/t$ (center deflection divided by
+thickness) is small: for $w_{0}/t \lesssim 0.2$--$0.3$ the plate is effectively in
+the linear-bending regime and either number is fine. As $w_{0}/t$ grows, membrane
+stiffening makes the nonlinear value increasingly smaller than the linear one, so
+the gap between the two columns is a direct measure of how much the large-deflection
+correction matters. Above $w_{0}/t = \num{5}$ (\code{VON\_KARMAN\_WT\_WARN\_RATIO})
+even the von K\'arm\'an model is out of its moderate-rotation validity envelope; the
+tool then prints a boxed model-validity warning (and highlights the affected
+spreadsheet rows) advising a large-rotation shell or finite-element model. Every
+spreadsheet also carries an italic note next to the results restating this guidance.
+Note that when the shear-deformable Mindlin theory is selected (thick plates, low
+$w_{0}/t$) the nonlinear value can be slightly \emph{larger} than the pure-bending
+linear value, because transverse-shear softening then outweighs the small membrane
+stiffening.
 
 The tool writes its figures as JPEG files by default (no interactive window), and
 can additionally or alternatively emit PNG, SVG or PDF via \code{-{}-figure-format}.
