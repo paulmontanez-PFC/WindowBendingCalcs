@@ -668,11 +668,15 @@ conservative = replace(wd.MATERIAL_PRESETS["beryllium"],
 \paragraph{Figure output.} The tool never opens an interactive window. Instead it
 renders results with the non-interactive Agg backend and writes image files
 into the output directory (\code{figures/} by default), reporting each saved path
-on the console. A single case produces \code{single\_case\_deflection\_clamped.jpg}
-and \code{single\_case\_stress\_clamped.jpg}; a single-parameter sweep produces
-\code{sweep\_\textit{variable}\_clamped.jpg}; the combined sweep produces
-\code{sweep\_combined\_clamped.jpg} (the trailing boundary-condition name is
-appended automatically---see \emph{Output file naming} below). The figure format
+on the console. A single case produces
+\code{single\_case\_deflection\_fused\_silica\_clamped.jpg}
+and \code{single\_case\_stress\_fused\_silica\_clamped.jpg}; a single-parameter
+sweep produces \code{sweep\_\textit{variable}\_fused\_silica\_clamped.jpg}; the
+combined sweep produces \code{sweep\_combined\_fused\_silica\_clamped.jpg} (the
+material name and trailing boundary-condition name are appended
+automatically---see \emph{Output file naming} below). Every figure is also
+annotated with the analysed material and the fixed simulation parameters via a
+two-line subtitle (see \emph{Fixed-parameter annotations} below). The figure format
 defaults to JPEG but is selectable with \code{-{}-figure-format}, which accepts one
 or more of \code{jpg}, \code{png}, \code{svg} and \code{pdf}. Passing several
 writes the same figure in each format under a shared name, for example
@@ -688,8 +692,9 @@ and an SVG (for inclusion in a report or further editing):
 python window_deformation.py --figure-format jpg svg
 \end{lstlisting}
 \noindent which writes, for the default single case,
-\code{single\_case\_deflection\_clamped.jpg} and
-\code{single\_case\_deflection\_clamped.svg} (plus the matching stress pair).
+\code{single\_case\_deflection\_fused\_silica\_clamped.jpg} and
+\code{single\_case\_deflection\_fused\_silica\_clamped.svg} (plus the matching
+stress pair).
 Because the overwrite guard reserves a stem across \emph{all} requested formats
 at once, re-running the command bumps every format together
 (\code{..\_clamped\_1.jpg} and \code{..\_clamped\_1.svg}), so the raster and
@@ -698,14 +703,18 @@ vector copies of one figure never drift apart.
 \paragraph{Spreadsheet output.} Alongside every figure the tool writes an Excel
 workbook (\code{.xlsx}) containing the same numeric results echoed to the console,
 into the same output directory. A single case produces
-\code{single\_case\_clamped.xlsx} with two worksheets: \emph{Single Case}
-(a labelled quantity/value/units summary table) and \emph{Profile Data},
+\code{single\_case\_fused\_silica\_clamped.xlsx} with two worksheets: \emph{Single Case}
+(a labelled quantity/value/units summary table, whose first row names the
+analysed window material) and \emph{Profile Data},
 which tabulates the full radial profiles behind the plotted curves---one row
 per solver sample point giving radius, transverse deflection and the four
 stress components (radial and hoop stress on the top and bottom faces).
 A single-parameter sweep produces
-\code{sweep\_\textit{variable}\_clamped.xlsx} (one row per swept value); and the combined
-sweep produces \code{sweep\_combined\_clamped.xlsx} with four worksheets. The first,
+\code{sweep\_\textit{variable}\_fused\_silica\_clamped.xlsx} (one row per swept
+value), prefixed with a \emph{parameters held constant} block that lists the
+material, the fixed geometry and load, boundary condition, plate theory, Young's
+modulus, Poisson's ratio and allowable stress (the swept variable is omitted); and the combined
+sweep produces \code{sweep\_combined\_fused\_silica\_clamped.xlsx} with four worksheets. The first,
 \emph{Case Details}, lists every grid case with the same per-case quantities
 reported for a single case---thickness, diameter, thickness/diameter ratio,
 resolved plate theory, linear and nonlinear centre deflection, peak tensile stress
@@ -713,8 +722,8 @@ and safety factor (one row per thickness/diameter combination). The remaining th
 worksheets---center deflection, peak tensile stress and safety factor---each present
 that response as a thickness $\times$ diameter matrix. Every combined-sweep
 worksheet is prefixed with a \emph{parameters held constant} block listing the
-pressure, boundary condition, plate theory, Young's modulus, Poisson's ratio and
-allowable stress used for the grid.
+material, pressure, boundary condition, plate theory, Young's modulus, Poisson's
+ratio and allowable stress used for the grid.
 Spreadsheet cells hold full-precision values displayed to five
 decimals. Every workbook also carries a \emph{Note} row stating the
 plate-theory selection rule---under \code{auto}, based on the radius-to-thickness
@@ -727,28 +736,36 @@ Pass \code{-{}-no-excel} to skip the spreadsheets (while still writing
 figures), or \code{-{}-no-save} to skip all output files. Excel export uses
 \code{openpyxl}.
 
-\paragraph{Output file naming.} Every figure and spreadsheet name always ends
-with the boundary condition (\code{\textit{name}\_clamped},
-\code{\textit{name}\_simply\_supported}) so results are self-identifying and
-runs with different edge conditions never collide. The tool also never
-overwrites an existing output file: if the boundary-condition name is already
-taken, a numeric suffix is added (\code{\textit{name}\_clamped\_1},
-\code{\textit{name}\_clamped\_2}, \ldots) to guarantee uniqueness. The
-console always reports the exact path written.
+\paragraph{Output file naming.} Every figure and spreadsheet name embeds the
+window material and always ends with the boundary condition
+(\code{\textit{name}\_fused\_silica\_clamped},
+\code{\textit{name}\_methyl\_methacrylate\_simply\_supported}) so results are
+self-identifying and runs with different materials or edge conditions never
+collide. The material token is a lowercase, filename-safe form of the selected
+material's display name (for example \code{Fused Silica}
+$\rightarrow$ \code{fused\_silica}, \code{N-BK7} $\rightarrow$ \code{n\_bk7},
+\code{96\% Silica (Vycor)} $\rightarrow$ \code{96\_silica\_vycor}). The tool
+also never overwrites an existing output file: if the material/boundary name is
+already taken, a numeric suffix is added
+(\code{\textit{name}\_fused\_silica\_clamped\_1},
+\code{\textit{name}\_fused\_silica\_clamped\_2}, \ldots) to guarantee
+uniqueness. The console always reports the exact path written.
 
 \paragraph{Custom output names.} The default base names (\code{single\_case},
 \code{sweep\_\textit{variable}}, \code{sweep\_combined}) can be overridden with
-\code{-{}-figure-name} and \code{-{}-excel-name}. The boundary-condition suffix,
-uniqueness suffix and file extension are still appended, so
-\code{-{}-excel-name results} writes \code{results\_clamped.xlsx}. In single-case
+\code{-{}-figure-name} and \code{-{}-excel-name}. The material token,
+boundary-condition suffix, uniqueness suffix and file extension are still
+appended, so with the default fused-silica preset \code{-{}-excel-name results}
+writes \code{results\_fused\_silica\_clamped.xlsx}. In single-case
 mode the two figures take a plot-type suffix, so \code{-{}-figure-name mywindow}
-writes \code{mywindow\_deflection\_clamped.jpg} and
-\code{mywindow\_stress\_clamped.jpg}. For example,
+writes \code{mywindow\_deflection\_fused\_silica\_clamped.jpg} and
+\code{mywindow\_stress\_fused\_silica\_clamped.jpg}. For example,
 \begin{quote}
 \code{python window\_deformation.py -{}-figure-name mywindow -{}-excel-name results}
 \end{quote}
-names the default single case \code{mywindow\_deflection\_clamped.jpg},
-\code{mywindow\_stress\_clamped.jpg} and \code{results\_clamped.xlsx}.
+names the default single case \code{mywindow\_deflection\_fused\_silica\_clamped.jpg},
+\code{mywindow\_stress\_fused\_silica\_clamped.jpg} and
+\code{results\_fused\_silica\_clamped.xlsx}.
 
 \paragraph{Diameter sweep defaults.} When \code{-{}-sweep-variable diameter\_mm} is
 selected without explicit \code{-{}-sweep-start}/\code{-{}-sweep-stop}, the sweep
@@ -757,7 +774,7 @@ defaults to diameters \qtyrange{250}{450}{\milli\meter} in $5$ steps (radius \qt
 
 \paragraph{Combined sweep.} Selecting \code{-{}-sweep-variable all} evaluates a
 full thickness $\times$ diameter grid at the fixed base pressure and presents it
-in a single figure (\code{sweep\_combined\_clamped.jpg}) as \emph{families} of curves. The
+in a single figure (\code{sweep\_combined\_fused\_silica\_clamped.jpg}) as \emph{families} of curves. The
 figure is a $2\times 3$ grid of panels: the top row plots each response versus
 thickness with one curve per diameter, and the bottom row plots each response
 versus diameter with one curve per thickness. The three columns are center
@@ -769,16 +786,19 @@ whole grid shares one loading condition. Explicit
 ignored in this mode. The console prints three matrices (deflection, stress and
 safety factor) with thickness as rows and diameter as columns.
 
-\paragraph{Held-constant annotations.} Every figure states which parameters are
-held fixed. The single-case deflection and stress figures carry a subtitle listing
-the full input set (e.g.\ \emph{Diameter = 450.0 mm, Thickness = 25.0 mm,
-Pressure = 101,000 Pa, Edge = clamped}), and the console output additionally names
-the resolved plate theory and the $t/D$ ratio. A single-parameter sweep carries a
-figure title listing all fixed quantities (e.g.\ \emph{Held constant:
-Diameter = 450.0 mm, Pressure = 101,000 Pa, Edge = clamped, Theory = Kirchhoff}).
-The combined figure places the globally common constants (pressure, edge support
-and plate theory) in the figure title; each panel's legend identifies the curve
-family (diameter for the thickness panels, thickness for the diameter panels).
+\paragraph{Fixed-parameter annotations.} Every figure states which parameters are
+held fixed through a compact two-line subtitle: the top line lists the analysed
+material together with the fixed geometry and load, and the second line carries the
+boundary condition and plate theory. The single-case deflection and stress figures
+read, for example, \emph{Material = Fused Silica, Diameter = 400.0 mm,
+Thickness = 25.0 mm, Pressure = 101,000 Pa} on the first line and
+\emph{Edge = clamped, Theory = Mindlin (t/D = 0.062)} on the second, while the
+plot titles themselves stay plain (\emph{Deflection Profile}, \emph{Stress
+Profiles}). A single-parameter sweep uses the same two-line subtitle but omits the
+swept variable from the fixed list. The combined figure places the globally common
+constants (material, pressure, edge support and plate theory) in the two-line
+suptitle; each panel's legend identifies the curve family (diameter for the
+thickness panels, thickness for the diameter panels).
 
 % ===========================================================================
 \section{Examples}
@@ -791,8 +811,8 @@ python window_deformation.py
 \end{lstlisting}
 
 \noindent Produces the console summary below and writes
-\code{figures/single\_case\_deflection\_clamped.jpg} and
-\code{figures/single\_case\_stress\_clamped.jpg}:
+\code{figures/single\_case\_deflection\_fused\_silica\_clamped.jpg} and
+\code{figures/single\_case\_stress\_fused\_silica\_clamped.jpg}:
 
 \begin{lstlisting}[style=shellstyle]
 === Fused Silica Window Deformation (von Karman Nonlinear Plate BVP) ===
@@ -803,8 +823,8 @@ Linear center deflection:    0.0419 mm
 Nonlinear center deflection: 0.0419 mm
 Peak tensile stress:         6.137 MPa
 Safety factor (allowable/peak): 0.764
-Saved figure: figures\single_case_deflection.jpg
-Saved figure: figures\single_case_stress.jpg
+Saved figure: figures\single_case_deflection_fused_silica_clamped.jpg
+Saved figure: figures\single_case_stress_fused_silica_clamped.jpg
 \end{lstlisting}
 
 For this geometry $w/t \approx 0.0017$, so the membrane stiffening is negligible
@@ -866,7 +886,8 @@ python window_deformation.py --sweep-variable thickness_mm \
     --sweep-start 15 --sweep-stop 35 --sweep-count 5
 \end{lstlisting}
 
-\noindent Produces an aligned table (and writes \code{figures/sweep\_thickness\_mm\_clamped.jpg}):
+\noindent Produces an aligned table (and writes\\
+\code{figures/sweep\_thickness\_mm\_fused\_silica\_clamped.jpg}):
 
 \begin{lstlisting}[style=shellstyle]
 === Design Sweep Summary ===
@@ -890,7 +911,7 @@ steps (radius \qtyrange{125}{225}{\milli\meter}):
 python window_deformation.py --sweep-variable diameter_mm
 \end{lstlisting}
 
-\noindent Produces (and writes \code{figures/sweep\_diameter\_mm\_clamped.jpg}):
+\noindent Produces (and writes \code{figures/sweep\_diameter\_mm\_fused\_silica\_clamped.jpg}):
 
 \begin{lstlisting}[style=shellstyle]
 === Design Sweep Summary ===
@@ -917,7 +938,7 @@ python window_deformation.py --sweep-variable pressure_pa \
 To study both geometry parameters at once under the fixed base pressure, select
 \code{all}. Three response matrices are printed (deflection, peak stress and
 safety factor) and a single combined figure of curve families
-(\code{figures/sweep\_combined\_clamped.jpg}) is written:
+(\code{figures/sweep\_combined\_fused\_silica\_clamped.jpg}) is written:
 
 \begin{lstlisting}[style=shellstyle]
 python window_deformation.py --sweep-variable all

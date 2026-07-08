@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import math
 import os
+import re
 import warnings
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
@@ -67,7 +68,7 @@ FIGURE_DIR = "figures"
 # SVG/PDF are vector (resolution-independent).
 SUPPORTED_FIGURE_FORMATS = ("jpg", "png", "svg", "pdf")
 DEFAULT_FIGURE_FORMATS = ("jpg",)
-FIGURE_DPI = 150
+FIGURE_DPI = 300
 
 # --- Spreadsheet output -----------------------------------------------------
 EXCEL_FORMAT = "xlsx"
@@ -81,7 +82,7 @@ FUSED_SILICA_POISSON_RATIO = 0.17
 FUSED_SILICA_ALLOWABLE_STRESS_PA = 680.0 * PA_PER_PSI
 
 # --- Default window geometry / loading --------------------------------------
-DEFAULT_DIAMETER_MM = 450.0
+DEFAULT_DIAMETER_MM = 400.0
 DEFAULT_THICKNESS_MM = 25.0
 DEFAULT_PRESSURE_PA = 101_000.0
 
@@ -1005,17 +1006,24 @@ def _bracket_units(text: str) -> str:
 
 
 def _held_constant_label(base_config: PlateConfig, sweep_variable: str) -> str:
-    """Return a human-readable summary of the parameters kept fixed in a sweep."""
-    parts: list[str] = []
+    """Return a two-line summary of the parameters kept fixed in a sweep.
+
+    The first line lists the material, held geometry and pressure; the second
+    line carries the boundary condition and plate theory, so the plot subtitle
+    reads as a compact caption rather than one long run-on line.
+    """
+    top: list[str] = [f"Material = {base_config.material.name}"]
     if sweep_variable != DIAMETER_SWEEP:
-        parts.append(f"Diameter = {base_config.diameter_m * MM_PER_M:.1f} mm")
+        top.append(f"Diameter = {base_config.diameter_m * MM_PER_M:.1f} mm")
     if sweep_variable != THICKNESS_SWEEP:
-        parts.append(f"Thickness = {base_config.thickness_m * MM_PER_M:.1f} mm")
+        top.append(f"Thickness = {base_config.thickness_m * MM_PER_M:.1f} mm")
     if sweep_variable != PRESSURE_SWEEP:
-        parts.append(f"Pressure = {base_config.pressure_pa:,.0f} Pa")
-    parts.append(f"Edge = {base_config.boundary_condition}")
-    parts.append(f"Theory = {_display_plate_theory(base_config.resolved_plate_theory())}")
-    return "Held constant: " + ", ".join(parts)
+        top.append(f"Pressure = {base_config.pressure_pa:,.0f} Pa")
+    bottom = [
+        f"Edge = {base_config.boundary_condition}",
+        f"Theory = {_display_plate_theory(base_config.resolved_plate_theory())}",
+    ]
+    return ", ".join(top) + "\n" + ", ".join(bottom)
 
 
 def _get_pyplot():
@@ -1076,20 +1084,41 @@ def _save_figure(fig, paths) -> None:
         fig.savefig(path, dpi=FIGURE_DPI, bbox_inches="tight", pad_inches=0.15)
 
 
+def _material_slug(material_name: str | None) -> str | None:
+    """Return a filename-safe lowercase token for a material display name.
+
+    Collapses any run of non-alphanumeric characters to a single underscore so
+    names like ``"Fused Silica"`` become ``fused_silica`` and ``"96% Silica
+    (Vycor)"`` becomes ``96_silica_vycor``. Returns ``None`` for an empty or
+    missing name so callers can omit the material segment.
+    """
+    if not material_name:
+        return None
+    slug = re.sub(r"[^a-z0-9]+", "_", material_name.strip().lower()).strip("_")
+    return slug or None
+
+
 def _unique_stem(
     directory: str,
     name: str,
     extensions: Sequence[str],
     boundary_condition: str | None = None,
+    material: str | None = None,
 ) -> str:
     """Return a path stem (no extension) that collides with none of ``extensions``.
 
-    When ``boundary_condition`` is given, it is always appended to the base name
-    (``{name}_{boundary_condition}``). If any requested extension already exists
-    for that stem, a numeric suffix is added (``..._1``, ``_2``, ...) until a
-    stem is free for every extension, so all formats of one figure share it.
+    The base name is built as ``{name}_{material}_{boundary_condition}`` from
+    whichever of ``material`` (a material slug) and ``boundary_condition`` are
+    supplied, so the name always ends with the boundary condition. If any
+    requested extension already exists for that stem, a numeric suffix is added
+    (``..._1``, ``_2``, ...) until a stem is free for every extension, so all
+    formats of one figure share it.
     """
-    base = f"{name}_{boundary_condition}" if boundary_condition else name
+    base = name
+    if material:
+        base = f"{base}_{material}"
+    if boundary_condition:
+        base = f"{base}_{boundary_condition}"
 
     def taken(stem: str) -> bool:
         return any(
@@ -1113,9 +1142,10 @@ def _unique_path(
     name: str,
     extension: str,
     boundary_condition: str | None = None,
+    material: str | None = None,
 ) -> str:
     """Return a path under ``directory`` that does not overwrite an existing file."""
-    stem = _unique_stem(directory, name, (extension,), boundary_condition)
+    stem = _unique_stem(directory, name, (extension,), boundary_condition, material)
     return f"{stem}.{extension}"
 
 
@@ -1124,18 +1154,26 @@ def _figure_paths(
     output_dir: str,
     figure_formats: Sequence[str] = DEFAULT_FIGURE_FORMATS,
     boundary_condition: str | None = None,
+    material: str | None = None,
 ) -> list[str]:
     """Return one output path per requested figure format, sharing a unique stem."""
     os.makedirs(output_dir, exist_ok=True)
-    stem = _unique_stem(output_dir, name, figure_formats, boundary_condition)
+    stem = _unique_stem(
+        output_dir, name, figure_formats, boundary_condition, material
+    )
     return [f"{stem}.{ext}" for ext in figure_formats]
 
 
 def _excel_path(
-    name: str, output_dir: str, boundary_condition: str | None = None
+    name: str,
+    output_dir: str,
+    boundary_condition: str | None = None,
+    material: str | None = None,
 ) -> str:
     os.makedirs(output_dir, exist_ok=True)
-    return _unique_path(output_dir, name, EXCEL_FORMAT, boundary_condition)
+    return _unique_path(
+        output_dir, name, EXCEL_FORMAT, boundary_condition, material
+    )
 
 
 GRID_METRICS: tuple[tuple[str, Callable[[GridPoint], float]], ...] = (
@@ -1218,6 +1256,7 @@ def _export_single_case_excel(
 
     rows = [
         ("Quantity", "Value", "Units"),
+        ("Material", config.material.name, ""),
         ("Diameter", config.diameter_m * MM_PER_M, "mm"),
         ("Thickness", config.thickness_m * MM_PER_M, "mm"),
         ("Pressure", config.pressure_pa, "Pa"),
@@ -1248,7 +1287,10 @@ def _export_single_case_excel(
     _write_single_case_profile_sheet(profile_sheet, solution)
 
     path = _excel_path(
-        excel_name or "single_case", output_dir, config.boundary_condition
+        excel_name or "single_case",
+        output_dir,
+        config.boundary_condition,
+        _material_slug(config.material.name),
     )
     workbook.save(path)
     return [path]
@@ -1269,7 +1311,11 @@ def _export_sweep_excel(
     sheet.title = "Design Sweep"
 
     if base_config is not None:
-        sheet.append([_held_constant_label(base_config, sweep_variable)])
+        sheet.append(["Parameters held constant"])
+        sheet.cell(row=sheet.max_row, column=1).font = _bold_font()
+        for row in _sweep_held_constant_rows(base_config, sweep_variable):
+            sheet.append(row)
+            sheet.cell(row=sheet.max_row, column=1).font = _bold_font()
         sheet.append([])
 
     header = (
@@ -1316,7 +1362,8 @@ def _export_sweep_excel(
     _autofit_columns(sheet)
 
     bc = base_config.boundary_condition if base_config is not None else None
-    path = _excel_path(excel_name or f"sweep_{sweep_variable}", output_dir, bc)
+    mat = _material_slug(base_config.material.name) if base_config is not None else None
+    path = _excel_path(excel_name or f"sweep_{sweep_variable}", output_dir, bc, mat)
     workbook.save(path)
     return [path]
 
@@ -1324,6 +1371,7 @@ def _export_sweep_excel(
 def _held_constant_rows(base_config: PlateConfig) -> list[tuple]:
     """Return the constant load and material parameter rows for sweep sheets."""
     return [
+        ("Material", base_config.material.name, ""),
         ("Pressure", base_config.pressure_pa, "Pa"),
         ("Boundary condition", base_config.boundary_condition, ""),
         ("Plate theory", _display_plate_theory(base_config.plate_theory), ""),
@@ -1335,6 +1383,38 @@ def _held_constant_rows(base_config: PlateConfig) -> list[tuple]:
             "MPa",
         ),
     ]
+
+
+def _sweep_held_constant_rows(
+    base_config: PlateConfig, sweep_variable: str
+) -> list[tuple]:
+    """Return the held-constant rows for a single-parameter sweep sheet.
+
+    Mirrors the combined-sweep "parameters held constant" block but also lists
+    whichever geometry (diameter/thickness) or load (pressure) is not the swept
+    variable, so the sheet is self-describing.
+    """
+    rows: list[tuple] = [("Material", base_config.material.name, "")]
+    if sweep_variable != DIAMETER_SWEEP:
+        rows.append(("Diameter", base_config.diameter_m * MM_PER_M, "mm"))
+    if sweep_variable != THICKNESS_SWEEP:
+        rows.append(("Thickness", base_config.thickness_m * MM_PER_M, "mm"))
+    if sweep_variable != PRESSURE_SWEEP:
+        rows.append(("Pressure", base_config.pressure_pa, "Pa"))
+    rows.append(("Boundary condition", base_config.boundary_condition, ""))
+    rows.append(
+        ("Plate theory", _display_plate_theory(base_config.plate_theory), "")
+    )
+    rows.append(("Young's modulus", base_config.material.youngs_modulus_pa, "Pa"))
+    rows.append(("Poisson's ratio", base_config.material.poisson_ratio, ""))
+    rows.append(
+        (
+            "Allowable stress",
+            base_config.material.allowable_stress_pa / PA_PER_MPA,
+            "MPa",
+        )
+    )
+    return rows
 
 
 def _write_grid_details_sheet(
@@ -1487,7 +1567,8 @@ def _export_grid_excel(
         _autofit_columns(sheet)
 
     bc = base_config.boundary_condition if base_config is not None else None
-    path = _excel_path(excel_name or "sweep_combined", output_dir, bc)
+    mat = _material_slug(base_config.material.name) if base_config is not None else None
+    path = _excel_path(excel_name or "sweep_combined", output_dir, bc, mat)
     workbook.save(path)
     return [path]
 
@@ -1555,6 +1636,7 @@ def _case_parameter_label(config: PlateConfig) -> str:
     figure width instead of overflowing the plot edges.
     """
     return (
+        f"Material = {config.material.name}, "
         f"Diameter = {config.diameter_m * MM_PER_M:.1f} mm, "
         f"Thickness = {config.thickness_m * MM_PER_M:.1f} mm, "
         f"Pressure = {config.pressure_pa:,.0f} Pa,\n"
@@ -1577,10 +1659,11 @@ def _plot_single_case(
     w_mm = solution.w_m * MM_PER_M
     parameter_label = _case_parameter_label(config) if config is not None else None
     bc = config.boundary_condition if config is not None else None
+    mat = _material_slug(config.material.name) if config is not None else None
 
     base_name = figure_name or "single_case"
     deflection_paths = _figure_paths(
-        f"{base_name}_deflection", output_dir, figure_formats, bc
+        f"{base_name}_deflection", output_dir, figure_formats, bc, mat
     )
     plt.figure(figsize=(7, 4.5))
     plt.plot(r_mm, w_mm, linewidth=1.2)
@@ -1595,7 +1678,9 @@ def _plot_single_case(
     _save_figure(plt.gcf(), deflection_paths)
     plt.close()
 
-    stress_paths = _figure_paths(f"{base_name}_stress", output_dir, figure_formats, bc)
+    stress_paths = _figure_paths(
+        f"{base_name}_stress", output_dir, figure_formats, bc, mat
+    )
     plt.figure(figsize=(7, 4.5))
     plt.plot(r_mm, solution.sigma_r_top_pa / PA_PER_MPA, label=r"$\sigma_r$ top")
     plt.plot(r_mm, solution.sigma_t_top_pa / PA_PER_MPA, label=r"$\sigma_\theta$ top")
@@ -1643,8 +1728,9 @@ def _plot_sweep(
 
     x_label = _bracket_units(_sweep_axis_label(sweep_variable))
     bc = base_config.boundary_condition if base_config is not None else None
+    mat = _material_slug(base_config.material.name) if base_config is not None else None
     figure_paths = _figure_paths(
-        figure_name or f"sweep_{sweep_variable}", output_dir, figure_formats, bc
+        figure_name or f"sweep_{sweep_variable}", output_dir, figure_formats, bc, mat
     )
 
     plt.figure(figsize=(10, 4.5))
@@ -1691,8 +1777,9 @@ def _plot_combined_sweep(
     plt = _get_pyplot()
 
     bc = base_config.boundary_condition if base_config is not None else None
+    mat = _material_slug(base_config.material.name) if base_config is not None else None
     figure_paths = _figure_paths(
-        figure_name or "sweep_combined", output_dir, figure_formats, bc
+        figure_name or "sweep_combined", output_dir, figure_formats, bc, mat
     )
     lookup = {(p.thickness_mm, p.diameter_mm): p for p in points}
     thicknesses = sorted({p.thickness_mm for p in points})
@@ -1730,7 +1817,8 @@ def _plot_combined_sweep(
 
     if base_config is not None:
         fig.suptitle(
-            f"Held constant: Pressure = {base_config.pressure_pa:,.0f} Pa, "
+            f"Material = {base_config.material.name}, "
+            f"Pressure = {base_config.pressure_pa:,.0f} Pa\n"
             f"Edge = {base_config.boundary_condition}, "
             f"Theory = {_display_plate_theory(base_config.plate_theory)}",
             fontsize=12,

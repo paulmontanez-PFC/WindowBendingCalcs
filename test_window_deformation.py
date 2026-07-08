@@ -81,16 +81,16 @@ def test_solve_plate_rejects_tiny_output():
 
 def test_baseline_clamped_matches_known_result():
     solution = wd.solve_plate(_default_config(), n_points=500)
-    assert solution.center_deflection_mm == pytest.approx(0.0419, abs=0.001)
-    assert solution.max_tensile_mpa == pytest.approx(6.137, abs=0.1)
-    assert solution.safety_factor == pytest.approx(0.764, abs=0.02)
+    assert solution.center_deflection_mm == pytest.approx(0.0262, abs=0.001)
+    assert solution.max_tensile_mpa == pytest.approx(4.848, abs=0.1)
+    assert solution.safety_factor == pytest.approx(0.967, abs=0.02)
 
 
 def test_baseline_simply_supported_matches_known_result():
     config = _default_config(boundary_condition=wd.SIMPLY_SUPPORTED)
     solution = wd.solve_plate(config, n_points=500)
-    assert solution.center_deflection_mm == pytest.approx(0.1851, abs=0.002)
-    assert solution.max_tensile_mpa == pytest.approx(9.803, abs=0.1)
+    assert solution.center_deflection_mm == pytest.approx(0.1156, abs=0.002)
+    assert solution.max_tensile_mpa == pytest.approx(7.723, abs=0.1)
 
 
 def test_nonlinear_matches_linear_for_thin_deflection():
@@ -429,19 +429,22 @@ def test_main_saves_jpeg_files(tmp_path):
     out_dir = tmp_path / "figs"
     wd.main(["--output-dir", str(out_dir)])
     files = sorted(p.name for p in out_dir.glob("*.jpg"))
-    assert files == ["single_case_deflection_clamped.jpg", "single_case_stress_clamped.jpg"]
+    assert files == [
+        "single_case_deflection_fused_silica_clamped.jpg",
+        "single_case_stress_fused_silica_clamped.jpg",
+    ]
 
 
 def test_figure_format_exports_svg_alongside_jpg(tmp_path):
     out_dir = tmp_path / "figs"
     wd.main(["--figure-format", "jpg", "svg", "--output-dir", str(out_dir)])
     assert sorted(p.name for p in out_dir.glob("*.jpg")) == [
-        "single_case_deflection_clamped.jpg",
-        "single_case_stress_clamped.jpg",
+        "single_case_deflection_fused_silica_clamped.jpg",
+        "single_case_stress_fused_silica_clamped.jpg",
     ]
     assert sorted(p.name for p in out_dir.glob("*.svg")) == [
-        "single_case_deflection_clamped.svg",
-        "single_case_stress_clamped.svg",
+        "single_case_deflection_fused_silica_clamped.svg",
+        "single_case_stress_fused_silica_clamped.svg",
     ]
 
 
@@ -450,8 +453,8 @@ def test_figure_format_svg_only_writes_no_jpg(tmp_path):
     wd.main(["--figure-format", "svg", "--output-dir", str(out_dir)])
     assert not list(out_dir.glob("*.jpg"))
     assert sorted(p.name for p in out_dir.glob("*.svg")) == [
-        "single_case_deflection_clamped.svg",
-        "single_case_stress_clamped.svg",
+        "single_case_deflection_fused_silica_clamped.svg",
+        "single_case_stress_fused_silica_clamped.svg",
     ]
 
 
@@ -461,8 +464,8 @@ def test_figure_format_multi_shares_unique_stem(tmp_path):
     wd.main(["--figure-format", "jpg", "svg", "--output-dir", str(out_dir)])
     names = {p.name for p in out_dir.iterdir()}
     # The second run must not overwrite the first; both formats bump together.
-    assert "single_case_deflection_clamped_1.jpg" in names
-    assert "single_case_deflection_clamped_1.svg" in names
+    assert "single_case_deflection_fused_silica_clamped_1.jpg" in names
+    assert "single_case_deflection_fused_silica_clamped_1.svg" in names
 
 
 def test_invalid_figure_format_rejected():
@@ -482,10 +485,10 @@ def test_existing_files_are_not_overwritten(tmp_path):
     # original files remain untouched while a numeric-suffixed copy is added.
     for name, mtime in first.items():
         assert (out_dir / name).stat().st_mtime_ns == mtime
-    assert "single_case_deflection_clamped.jpg" in first
-    assert "single_case_stress_clamped.jpg" in first
-    assert "single_case_deflection_clamped_1.jpg" in after
-    assert "single_case_stress_clamped_1.jpg" in after
+    assert "single_case_deflection_fused_silica_clamped.jpg" in first
+    assert "single_case_stress_fused_silica_clamped.jpg" in first
+    assert "single_case_deflection_fused_silica_clamped_1.jpg" in after
+    assert "single_case_stress_fused_silica_clamped_1.jpg" in after
 
 
 def test_unique_path_always_appends_boundary_condition(tmp_path):
@@ -505,6 +508,39 @@ def test_unique_path_numeric_without_boundary_condition(tmp_path):
     assert path.endswith("sweep_combined_1.xlsx")
 
 
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("Fused Silica", "fused_silica"),
+        ("N-BK7", "n_bk7"),
+        ("Methyl Methacrylate", "methyl_methacrylate"),
+        ("96% Silica (Vycor)", "96_silica_vycor"),
+        ("Borosilicate (Pyrex)", "borosilicate_pyrex"),
+        ("", None),
+        (None, None),
+    ],
+)
+def test_material_slug(name, expected):
+    assert wd._material_slug(name) == expected
+
+
+def test_unique_path_inserts_material_before_boundary(tmp_path):
+    path = wd._unique_path(
+        str(tmp_path), "single_case", "xlsx", "clamped", "methyl_methacrylate"
+    )
+    assert path.endswith("single_case_methyl_methacrylate_clamped.xlsx")
+
+
+def test_main_uses_selected_material_in_filenames(tmp_path):
+    out_dir = tmp_path / "figs"
+    wd.main(["--material", "acrylic", "--output-dir", str(out_dir)])
+    assert (out_dir / "single_case_methyl_methacrylate_clamped.xlsx").is_file()
+    assert sorted(p.name for p in out_dir.glob("*.jpg")) == [
+        "single_case_deflection_methyl_methacrylate_clamped.jpg",
+        "single_case_stress_methyl_methacrylate_clamped.jpg",
+    ]
+
+
 def test_main_sweep_saves_jpeg_file(tmp_path):
     out_dir = tmp_path / "figs"
     wd.main(
@@ -516,7 +552,7 @@ def test_main_sweep_saves_jpeg_file(tmp_path):
         ]
     )
     files = [p.name for p in out_dir.glob("*.jpg")]
-    assert "sweep_diameter_mm_clamped.jpg" in files
+    assert "sweep_diameter_mm_fused_silica_clamped.jpg" in files
 
 
 def test_main_combined_sweep_prints_grid_matrices(capsys):
@@ -537,13 +573,13 @@ def test_main_combined_sweep_saves_single_figure(tmp_path):
     out_dir = tmp_path / "figs"
     wd.main(["--sweep-variable", "all", "--output-dir", str(out_dir)])
     files = [p.name for p in out_dir.glob("*.jpg")]
-    assert files == ["sweep_combined_clamped.jpg"]
+    assert files == ["sweep_combined_fused_silica_clamped.jpg"]
 
 
 def test_main_single_case_saves_excel(tmp_path):
     out_dir = tmp_path / "figs"
     wd.main(["--output-dir", str(out_dir)])
-    assert (out_dir / "single_case_clamped.xlsx").is_file()
+    assert (out_dir / "single_case_fused_silica_clamped.xlsx").is_file()
 
 
 def test_single_case_excel_has_profile_sheet(tmp_path):
@@ -570,10 +606,44 @@ def test_single_case_excel_has_profile_sheet(tmp_path):
     assert first_data[1] == pytest.approx(solution.w_m[0] * wd.MM_PER_M)
 
 
-def test_main_sweep_saves_excel(tmp_path):
+def test_single_case_excel_includes_material_row(tmp_path):
+    openpyxl = pytest.importorskip("openpyxl")
+    config = _default_config(material=wd.MATERIAL_PRESETS["acrylic"])
+    solution = wd.solve_plate(config, n_points=60)
+    paths = wd._export_single_case_excel(config, solution, str(tmp_path))
+    sheet = openpyxl.load_workbook(paths[0])["Single Case"]
+    material_value = None
+    for row in sheet.iter_rows(values_only=True):
+        if row and row[0] == "Material":
+            material_value = row[1]
+            break
+    assert material_value == "Methyl Methacrylate"
+
+
+def test_held_constant_label_includes_material():
+    config = _default_config()
+    label = wd._held_constant_label(config, wd.THICKNESS_SWEEP)
+    assert "Material = Fused Silica" in label
+
+
+def test_combined_sweep_case_details_includes_material(tmp_path):
+    openpyxl = pytest.importorskip("openpyxl")
+    out_dir = tmp_path / "figs"
+    wd.main(["--sweep-variable", "all", "--output-dir", str(out_dir)])
+    workbook = openpyxl.load_workbook(
+        out_dir / "sweep_combined_fused_silica_clamped.xlsx"
+    )
+    sheet = workbook["Case Details"]
+    rows = list(sheet.iter_rows(values_only=True))
+    material_row = next((r for r in rows if r and r[0] == "Material"), None)
+    assert material_row is not None
+    assert material_row[1] == "Fused Silica"
+
+
+
     out_dir = tmp_path / "figs"
     wd.main(["--sweep-variable", "diameter_mm", "--output-dir", str(out_dir)])
-    assert (out_dir / "sweep_diameter_mm_clamped.xlsx").is_file()
+    assert (out_dir / "sweep_diameter_mm_fused_silica_clamped.xlsx").is_file()
 
 
 def test_custom_names_single_case(tmp_path):
@@ -588,12 +658,12 @@ def test_custom_names_single_case(tmp_path):
             str(out_dir),
         ]
     )
-    assert (out_dir / "mywindow_deflection_clamped.jpg").is_file()
-    assert (out_dir / "mywindow_stress_clamped.jpg").is_file()
-    assert (out_dir / "mydata_clamped.xlsx").is_file()
+    assert (out_dir / "mywindow_deflection_fused_silica_clamped.jpg").is_file()
+    assert (out_dir / "mywindow_stress_fused_silica_clamped.jpg").is_file()
+    assert (out_dir / "mydata_fused_silica_clamped.xlsx").is_file()
     # Default-named files must not be produced when custom names are given.
-    assert not (out_dir / "single_case_deflection_clamped.jpg").is_file()
-    assert not (out_dir / "single_case_clamped.xlsx").is_file()
+    assert not (out_dir / "single_case_deflection_fused_silica_clamped.jpg").is_file()
+    assert not (out_dir / "single_case_fused_silica_clamped.xlsx").is_file()
 
 
 def test_custom_names_single_sweep(tmp_path):
@@ -616,8 +686,8 @@ def test_custom_names_single_sweep(tmp_path):
             str(out_dir),
         ]
     )
-    assert (out_dir / "mysweep_clamped.jpg").is_file()
-    assert (out_dir / "mysweepdata_clamped.xlsx").is_file()
+    assert (out_dir / "mysweep_fused_silica_clamped.jpg").is_file()
+    assert (out_dir / "mysweepdata_fused_silica_clamped.xlsx").is_file()
 
 
 def test_custom_names_combined_sweep_keep_boundary_suffix(tmp_path):
@@ -636,15 +706,15 @@ def test_custom_names_combined_sweep_keep_boundary_suffix(tmp_path):
             str(out_dir),
         ]
     )
-    assert (out_dir / "mygrid_simply_supported.jpg").is_file()
-    assert (out_dir / "mygriddata_simply_supported.xlsx").is_file()
+    assert (out_dir / "mygrid_fused_silica_simply_supported.jpg").is_file()
+    assert (out_dir / "mygriddata_fused_silica_simply_supported.xlsx").is_file()
 
 
 def test_main_combined_sweep_saves_excel_with_three_sheets(tmp_path):
     openpyxl = pytest.importorskip("openpyxl")
     out_dir = tmp_path / "figs"
     wd.main(["--sweep-variable", "all", "--output-dir", str(out_dir)])
-    workbook_path = out_dir / "sweep_combined_clamped.xlsx"
+    workbook_path = out_dir / "sweep_combined_fused_silica_clamped.xlsx"
     assert workbook_path.is_file()
 
     workbook = openpyxl.load_workbook(workbook_path)
@@ -678,7 +748,7 @@ def test_combined_sweep_case_details_sheet_has_all_single_case_data(tmp_path):
     openpyxl = pytest.importorskip("openpyxl")
     out_dir = tmp_path / "figs"
     wd.main(["--sweep-variable", "all", "--output-dir", str(out_dir)])
-    workbook = openpyxl.load_workbook(out_dir / "sweep_combined_clamped.xlsx")
+    workbook = openpyxl.load_workbook(out_dir / "sweep_combined_fused_silica_clamped.xlsx")
 
     sheet = workbook["Case Details"]
     column_a = [sheet.cell(row=r, column=1).value for r in range(1, sheet.max_row + 1)]
@@ -725,14 +795,14 @@ def test_combined_sweep_case_details_sheet_has_all_single_case_data(tmp_path):
 @pytest.mark.parametrize(
     ("args", "filename", "sheet_name"),
     [
-        ([], "single_case_clamped.xlsx", "Single Case"),
+        ([], "single_case_fused_silica_clamped.xlsx", "Single Case"),
         (
             ["--sweep-variable", "thickness_mm", "--sweep-start", "15",
              "--sweep-stop", "35", "--sweep-count", "5"],
-            "sweep_thickness_mm_clamped.xlsx",
+            "sweep_thickness_mm_fused_silica_clamped.xlsx",
             "Design Sweep",
         ),
-        (["--sweep-variable", "all"], "sweep_combined_clamped.xlsx", "Case Details"),
+        (["--sweep-variable", "all"], "sweep_combined_fused_silica_clamped.xlsx", "Case Details"),
     ],
 )
 def test_excel_includes_plate_theory_threshold_note(tmp_path, args, filename, sheet_name):
@@ -773,8 +843,8 @@ def test_no_excel_keeps_figures(tmp_path):
     wd.main(["--no-excel", "--output-dir", str(out_dir)])
     assert not list(out_dir.glob("*.xlsx"))
     assert sorted(p.name for p in out_dir.glob("*.jpg")) == [
-        "single_case_deflection_clamped.jpg",
-        "single_case_stress_clamped.jpg",
+        "single_case_deflection_fused_silica_clamped.jpg",
+        "single_case_stress_fused_silica_clamped.jpg",
     ]
 
 
@@ -782,28 +852,28 @@ def test_no_figures_keeps_excel(tmp_path):
     out_dir = tmp_path / "figs"
     wd.main(["--no-figures", "--output-dir", str(out_dir)])
     assert not list(out_dir.glob("*.jpg"))
-    assert (out_dir / "single_case_clamped.xlsx").is_file()
+    assert (out_dir / "single_case_fused_silica_clamped.xlsx").is_file()
 
 
 def test_no_excel_combined_keeps_figure(tmp_path):
     out_dir = tmp_path / "figs"
     wd.main(["--sweep-variable", "all", "--no-excel", "--output-dir", str(out_dir)])
     assert not list(out_dir.glob("*.xlsx"))
-    assert (out_dir / "sweep_combined_clamped.jpg").is_file()
+    assert (out_dir / "sweep_combined_fused_silica_clamped.jpg").is_file()
 
 
 def test_no_figures_combined_keeps_excel(tmp_path):
     out_dir = tmp_path / "figs"
     wd.main(["--sweep-variable", "all", "--no-figures", "--output-dir", str(out_dir)])
     assert not list(out_dir.glob("*.jpg"))
-    assert (out_dir / "sweep_combined_clamped.xlsx").is_file()
+    assert (out_dir / "sweep_combined_fused_silica_clamped.xlsx").is_file()
 
 
 def test_held_constant_label_excludes_swept_variable():
     config = _default_config()
     label = wd._held_constant_label(config, wd.THICKNESS_SWEEP)
     assert "Thickness" not in label
-    assert "Diameter = 450.0 mm" in label
+    assert "Diameter = 400.0 mm" in label
     assert "Pressure = 101,000 Pa" in label
     assert "Edge = clamped" in label
 
@@ -860,7 +930,9 @@ def test_single_case_excel_plate_theory_is_capitalized(tmp_path):
     openpyxl = pytest.importorskip("openpyxl")
     out_dir = tmp_path / "figs"
     wd.main(["--plate-theory", "mindlin", "--output-dir", str(out_dir)])
-    sheet = openpyxl.load_workbook(out_dir / "single_case_clamped.xlsx")["Single Case"]
+    sheet = openpyxl.load_workbook(
+        out_dir / "single_case_fused_silica_clamped.xlsx"
+    )["Single Case"]
     theory_value = None
     for row in sheet.iter_rows(values_only=True):
         if row and row[0] == "Plate theory":
