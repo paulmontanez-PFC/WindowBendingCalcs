@@ -1646,6 +1646,12 @@ def _case_parameter_label(config: PlateConfig) -> str:
     )
 
 
+def _include_zero_yaxis(ax) -> None:
+    """Expand the y-axis limits so that zero is always shown."""
+    bottom, top = ax.get_ylim()
+    ax.set_ylim(min(bottom, 0.0), max(top, 0.0))
+
+
 def _plot_single_case(
     solution: PlateSolution,
     output_dir: str = FIGURE_DIR,
@@ -1674,6 +1680,7 @@ def _plot_single_case(
     if parameter_label is not None:
         plt.suptitle(parameter_label, fontsize=9)
     _annotate_validity(plt.gcf(), solution)
+    _include_zero_yaxis(plt.gca())
     plt.tight_layout()
     _save_figure(plt.gcf(), deflection_paths)
     plt.close()
@@ -1704,6 +1711,7 @@ def _plot_single_case(
     if parameter_label is not None:
         plt.suptitle(parameter_label, fontsize=9)
     _annotate_validity(plt.gcf(), solution)
+    _include_zero_yaxis(plt.gca())
     plt.tight_layout()
     _save_figure(plt.gcf(), stress_paths)
     plt.close()
@@ -1740,6 +1748,7 @@ def _plot_sweep(
     plt.ylabel("Center deflection [mm]")
     plt.title("Deflection vs Sweep Variable")
     plt.grid(True, alpha=0.3)
+    _include_zero_yaxis(plt.gca())
 
     plt.subplot(1, 2, 2)
     plt.plot(values, stress, marker="o", label="Peak stress [MPa]")
@@ -1748,6 +1757,7 @@ def _plot_sweep(
     plt.title("Stress and Safety vs Sweep Variable")
     plt.grid(True, alpha=0.3)
     plt.legend()
+    _include_zero_yaxis(plt.gca())
 
     if base_config is not None:
         plt.suptitle(_held_constant_label(base_config, sweep_variable), fontsize=10)
@@ -1803,6 +1813,7 @@ def _plot_combined_sweep(
         ax.set_title(f"{ylabel} vs Thickness")
         ax.grid(True, alpha=0.3)
         ax.legend(title="Diameter", fontsize=8)
+        _include_zero_yaxis(ax)
 
     for col, (ylabel, getter) in enumerate(metrics):
         ax = axes[1][col]
@@ -1814,6 +1825,7 @@ def _plot_combined_sweep(
         ax.set_title(f"{ylabel} vs Diameter")
         ax.grid(True, alpha=0.3)
         ax.legend(title="Thickness", fontsize=8)
+        _include_zero_yaxis(ax)
 
     if base_config is not None:
         fig.suptitle(
