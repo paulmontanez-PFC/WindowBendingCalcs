@@ -328,7 +328,8 @@ $\sigma_{\text{allow}}$:
 \end{equation}
 %
 Because fused silica is brittle, the relevant allowable stress is its
-``allowable design stress'' as listed in the reference glass-property table.
+``allowable design stress'' as listed in the reference glass-property table
+(Ref.~\ref{ref:bnl}).
 The default allowable stress is \qty{4.69}{\mega\pascal} (\num{680} psi).
 
 % ===========================================================================
@@ -569,7 +570,8 @@ built-in presets are listed in Table~\ref{tab:materials}. Run
 \begin{table}[h]
   \centering
   \caption{Built-in material presets. Values are nominal room-temperature
-  properties. For the glasses the allowable stress is the ``allowable design
+  properties taken from Ref.~\ref{ref:bnl}. For the glasses the allowable stress
+  is the ``allowable design
   stress'' listed directly in the reference glass-property table; for methyl
   methacrylate (\code{acrylic}) it follows table Note~\#8 (design stress limited
   to the lower of modulus of rupture / 10 or $(9200/10)\times(E/\num{360000})$),
@@ -1066,6 +1068,11 @@ python -m ruff check .
   \item P.~Virtanen \emph{et al.}, ``SciPy 1.0: Fundamental Algorithms for
     Scientific Computing in Python,'' \emph{Nature Methods}, 17, 261--272, 2020
     (the \code{solve\_bvp} collocation solver).
+  \item Brookhaven National Laboratory, ``Glass and Plastic Window Design for
+    Pressure Vessels,'' \S1.4.2 of the \emph{Occupational Health and Safety
+    Guide} (Interim), Brookhaven National Laboratory, Upton, NY. Source of the
+    material properties, allowable design stresses and table Note~\#8 used for
+    the built-in presets.\label{ref:bnl}
 \end{enumerate}
 
 \end{document}
